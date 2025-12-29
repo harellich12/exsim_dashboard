@@ -12,7 +12,10 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.formatting.rule import DataBarRule, FormulaRule
+from openpyxl.formatting.rule import DataBarRule, FormulaRule, IconSetRule
+from openpyxl.chart import ScatterChart, BarChart, Reference, Series
+from openpyxl.chart.marker import Marker
+from openpyxl.chart.label import DataLabelList
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -414,6 +417,171 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws1.column_dimensions['D'].width = 12
     ws1.column_dimensions['E'].width = 14
     ws1.column_dimensions['F'].width = 32
+    
+    # =========================================================================
+    # CHART DATA SECTION (Right side of sheet, starting column H)
+    # =========================================================================
+    
+    # Calculate averages for charts
+    high_awareness_avg = sum(market_data['zones'][z].get('my_awareness', DEFAULT_AWARENESS) for z in ZONES) / len(ZONES)
+    low_awareness_avg = high_awareness_avg  # Same default for now
+    
+    my_price_avg = sum(market_data['zones'][z].get('my_price', DEFAULT_PRICE) for z in ZONES) / len(ZONES)
+    comp_price_avg = sum(market_data['zones'][z].get('comp_avg_price', DEFAULT_PRICE) for z in ZONES) / len(ZONES)
+    my_attract_avg = sum(market_data['zones'][z].get('my_attractiveness', DEFAULT_ATTRACTIVENESS) for z in ZONES) / len(ZONES)
+    comp_attract_avg = DEFAULT_ATTRACTIVENESS  # Competitor default
+    
+    # High segment averages
+    high_avg_awareness = sum(market_data['by_segment']['High'][z].get('my_awareness', DEFAULT_AWARENESS) 
+                             if 'my_awareness' in market_data['by_segment']['High'][z] 
+                             else DEFAULT_AWARENESS for z in ZONES) / len(ZONES)
+    high_avg_price_gap = sum(((market_data['zones'][z].get('my_price', DEFAULT_PRICE) - 
+                               market_data['zones'][z].get('comp_avg_price', DEFAULT_PRICE)) / 
+                              max(1, market_data['zones'][z].get('comp_avg_price', DEFAULT_PRICE)) * 100) 
+                             for z in ZONES) / len(ZONES)
+    high_avg_attract = my_attract_avg
+    
+    # Low segment (using same zone data)
+    low_avg_awareness = high_avg_awareness
+    low_avg_price_gap = high_avg_price_gap
+    low_avg_attract = my_attract_avg
+    
+    # ----- Chart 1: Competitive Positioning Matrix Data -----
+    ws1['H1'] = "COMPETITIVE POSITIONING"
+    ws1['H1'].font = section_font
+    
+    # Data table for scatter chart
+    ws1['H3'] = "Entity"
+    ws1['I3'] = "Price"
+    ws1['J3'] = "Attractiveness"
+    for c in ['H', 'I', 'J']:
+        ws1[f'{c}3'].font = header_font
+        ws1[f'{c}3'].fill = header_fill
+        ws1[f'{c}3'].border = thin_border
+    
+    ws1['H4'] = "My Product"
+    ws1['I4'] = my_price_avg
+    ws1['J4'] = my_attract_avg
+    ws1['I4'].number_format = '$#,##0'
+    for c in ['H', 'I', 'J']:
+        ws1[f'{c}4'].border = thin_border
+    
+    ws1['H5'] = "Competitors"
+    ws1['I5'] = comp_price_avg
+    ws1['J5'] = comp_attract_avg
+    ws1['I5'].number_format = '$#,##0'
+    for c in ['H', 'I', 'J']:
+        ws1[f'{c}5'].border = thin_border
+    
+    # Create Scatter Chart
+    chart1 = ScatterChart()
+    chart1.title = "Competitive Positioning Matrix"
+    chart1.x_axis.title = "Price ($)"
+    chart1.y_axis.title = "Attractiveness Score"
+    chart1.style = 13
+    chart1.height = 10
+    chart1.width = 12
+    
+    # My Product series
+    x_values1 = Reference(ws1, min_col=9, min_row=4, max_row=4)
+    y_values1 = Reference(ws1, min_col=10, min_row=4, max_row=4)
+    series1 = Series(y_values1, x_values1, title="My Product")
+    series1.marker = Marker(symbol='circle', size=12)
+    series1.graphicalProperties.solidFill = "4472C4"  # Blue
+    chart1.series.append(series1)
+    
+    # Competitor series
+    x_values2 = Reference(ws1, min_col=9, min_row=5, max_row=5)
+    y_values2 = Reference(ws1, min_col=10, min_row=5, max_row=5)
+    series2 = Series(y_values2, x_values2, title="Competitors")
+    series2.marker = Marker(symbol='diamond', size=12)
+    series2.graphicalProperties.solidFill = "ED7D31"  # Orange
+    chart1.series.append(series2)
+    
+    ws1.add_chart(chart1, "H7")
+    
+    # ----- Chart 2: High vs Low Segment Gap Data -----
+    ws1['H24'] = "HIGH vs LOW SEGMENT GAP"
+    ws1['H24'].font = section_font
+    
+    # Data table for bar chart
+    ws1['H26'] = "Metric"
+    ws1['I26'] = "High Segment"
+    ws1['J26'] = "Low Segment"
+    for c in ['H', 'I', 'J']:
+        ws1[f'{c}26'].font = header_font
+        ws1[f'{c}26'].fill = header_fill
+        ws1[f'{c}26'].border = thin_border
+    
+    ws1['H27'] = "Awareness"
+    ws1['I27'] = high_avg_awareness
+    ws1['J27'] = low_avg_awareness
+    for c in ['H', 'I', 'J']:
+        ws1[f'{c}27'].border = thin_border
+    
+    ws1['H28'] = "Price Competitiveness"
+    ws1['I28'] = 100 - abs(high_avg_price_gap)  # Higher = better
+    ws1['J28'] = 100 - abs(low_avg_price_gap)
+    for c in ['H', 'I', 'J']:
+        ws1[f'{c}28'].border = thin_border
+    
+    ws1['H29'] = "Attractiveness"
+    ws1['I29'] = high_avg_attract
+    ws1['J29'] = low_avg_attract
+    for c in ['H', 'I', 'J']:
+        ws1[f'{c}29'].border = thin_border
+    
+    # Create Clustered Bar Chart
+    chart2 = BarChart()
+    chart2.type = "col"
+    chart2.grouping = "clustered"
+    chart2.title = "High vs Low Segment Comparison"
+    chart2.style = 13
+    chart2.height = 10
+    chart2.width = 12
+    
+    # Data references
+    categories = Reference(ws1, min_col=8, min_row=27, max_row=29)
+    data = Reference(ws1, min_col=9, min_row=26, max_col=10, max_row=29)
+    
+    chart2.add_data(data, titles_from_data=True)
+    chart2.set_categories(categories)
+    chart2.shape = 4
+    
+    ws1.add_chart(chart2, "H31")
+    
+    # ----- Traffic Light Conditional Formatting -----
+    # Apply to awareness data in both High and Low segment sections
+    # High segment awareness is in column C, rows 5-9 (approx)
+    # Low segment awareness is in column C, rows 13-17 (approx)
+    
+    # Create icon set rule for awareness columns
+    icon_rule = IconSetRule(
+        icon_style='3TrafficLights1',
+        type='num',
+        values=[0, 40, 70],  # Red < 40, Yellow 40-70, Green > 70
+        showValue=True,
+        reverse=False
+    )
+    
+    # Apply to High segment (rows 5-9, column C - Awareness Gap) 
+    ws1.conditional_formatting.add('C5:C9', icon_rule)
+    # Apply to Low segment (rows 13-17, column C)
+    ws1.conditional_formatting.add('C13:C17', icon_rule)
+    
+    # Price Gap red text formatting (column D if > 10%)
+    price_gap_rule = FormulaRule(
+        formula=['D5>0.1'],
+        font=Font(bold=True, color="9C0006")
+    )
+    ws1.conditional_formatting.add('D5:D9', price_gap_rule)
+    ws1.conditional_formatting.add('D13:D17', price_gap_rule)
+    
+    # Additional column widths for chart data
+    ws1.column_dimensions['H'].width = 18
+    ws1.column_dimensions['I'].width = 14
+    ws1.column_dimensions['J'].width = 14
+
     
     # =========================================================================
     # TAB 2: INNOVATION_LAB
