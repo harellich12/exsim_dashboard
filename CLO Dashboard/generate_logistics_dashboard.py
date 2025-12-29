@@ -13,6 +13,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule
+from openpyxl.chart import BarChart, LineChart, Reference, Series
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -29,14 +30,12 @@ TRANSPORT_MODES = ["Train", "Truck", "Plane"]
 DEFAULT_MATERIAL = "Electroclean"
 
 # Default transport configuration
-# Default transport configuration
 DEFAULT_TRANSPORT = {
     "Train": {"lead_time": 0, "cost": 0},
     "Truck": {"lead_time": 0, "cost": 0},
     "Plane": {"lead_time": 0, "cost": 0},
 }
 
-# Default warehouse configuration
 # Default warehouse configuration
 DEFAULT_WAREHOUSE = {
     "Center": {"capacity": 0, "cost_per_module": 0, "capacity_per_module": 0},
@@ -173,8 +172,12 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
     calc_fill = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
     output_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     ref_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
-    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-    purple_fill = PatternFill(start_color="E4DFEC", end_color="E4DFEC", fill_type="solid")
+    
+    # Traffic Light Fills
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")   # Stockout
+    purple_fill = PatternFill(start_color="E4DFEC", end_color="E4DFEC", fill_type="solid") # Overflow
+    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # Optimal
+    
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
@@ -288,6 +291,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
         cell.font = zone_font
         cell.fill = zone_fills[zone]
         cell.alignment = Alignment(horizontal='center')
+        chart_anchor_row = row 
         row += 1
         
         # Parameters
@@ -311,7 +315,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
         
         # Headers
         inv_headers = ['Fortnight', 'Production', 'Sales', 'Outgoing', 'Incoming', 
-                       'Projected Inv', 'Flag']
+                       'Projected Inv', 'Capacity', 'Flag'] # Added Capacity col for chart
         for col, h in enumerate(inv_headers, start=1):
             cell = ws2.cell(row=row, column=col, value=h)
             cell.font = header_font
@@ -351,14 +355,20 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
                 formula = f"=F{row-1}+B{row}+E{row}-D{row}-C{row}"
             cell = ws2.cell(row=row, column=6, value=formula)
             cell.border = thin_border
-            cell.fill = calc_fill
-            cell.font = Font(bold=True)
+            # Fill managed by conditional formatting below
             
-            # Flag - reference ROUTE_CONFIG for capacity per module
-            # Zone rows in ROUTE_CONFIG: Center=12, West=13, North=14, East=15, South=16
-            zone_config_row = 12 + ZONES.index(zone)
+            # Capacity Limit Column (Hidden for chart, or visible reference)
+            # Dynamic capacity = Base + Rented
+            # Zone rows in ROUTE_CONFIG: Data starts at row 13 (Center=13, West=14, etc)
+            zone_config_row = 13 + ZONES.index(zone)
             cell = ws2.cell(row=row, column=7, 
-                value=f'=IF(F{row}<0,"STOCKOUT: SHIP HERE!",IF(F{row}>$E${params_row}+(H${params_row}*ROUTE_CONFIG!$D${zone_config_row}),"OVERFLOW: RENT!","OK"))')
+                value=f"=$E${params_row} + ($H${params_row} * ROUTE_CONFIG!$D${zone_config_row})")
+            cell.border = thin_border
+            cell.fill = ref_fill
+            
+            # Flag
+            cell = ws2.cell(row=row, column=8, 
+                value=f'=IF(F{row}<0,"STOCKOUT: SHIP HERE!",IF(F{row}>G{row},"OVERFLOW: RENT!","OK"))')
             cell.border = thin_border
             
             row += 1
@@ -371,21 +381,111 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
             'rent_cell': f'H{params_row}'
         }
         
-        # Add conditional formatting for flags
+        # ---------------------------------------------------------
+        # CHARTS
+        # ---------------------------------------------------------
+        
+        # Logic: 
+        # Center Zone -> Tetris Combo Chart (Inv vs Cap).
+        # Other Zones -> Supply vs Demand (Clustered Bar).
+        
+        if zone == "Center":
+            # 1. Warehouse Tetris (Combo)
+            c1 = BarChart()
+            c1.type = "col"
+            c1.style = 10
+            c1.title = "Warehouse Tetris (Inv vs Capacity)"
+            c1.y_axis.title = "Units"
+            c1.x_axis.title = "Fortnight"
+            c1.height = 10
+            c1.width = 15
+            
+            data_inv = Reference(ws2, min_col=6, min_row=data_start, max_row=data_end) # F
+            cats = Reference(ws2, min_col=1, min_row=data_start, max_row=data_end)
+            
+            s1 = Series(data_inv, title="Ending Inv")
+            c1.append(s1)
+            c1.set_categories(cats)
+            
+            # Line for Capacity
+            c2 = LineChart()
+            data_cap = Reference(ws2, min_col=7, min_row=data_start, max_row=data_end) # G
+            s2 = Series(data_cap, title="Capacity Limit")
+            s2.graphicalProperties.line.solidFill = "FF0000" # Red Line
+            c2.append(s2)
+            
+            c1 += c2
+            ws2.add_chart(c1, f"J{chart_anchor_row}")
+        
+        else:
+            # 2. Supply vs Demand (Clustered Bar)
+            # Needs helper cols? Or can plot existing cols?
+            # Supply = Prod (B) + Incoming (E)
+            # Demand = Sales (C) + Outgoing (D)
+            # Since these are calculated sums, we can't chart them directly without helper columns.
+            # Let's add hidden helper columns to the right for the chart.
+            
+            helper_col = 10 
+            # Supply Col
+            ws2.cell(row=data_start-1, column=helper_col, value="Total Supply")
+            for r in range(data_start, data_end+1):
+                ws2.cell(row=r, column=helper_col, value=f"=B{r}+E{r}")
+            
+            # Demand Col
+            ws2.cell(row=data_start-1, column=helper_col+1, value="Total Demand")
+            for r in range(data_start, data_end+1):
+                ws2.cell(row=r, column=helper_col+1, value=f"=C{r}+D{r}")
+            
+            # Hide them?
+            # ws2.column_dimensions[get_column_letter(helper_col)].hidden = True
+            
+            c3 = BarChart()
+            c3.type = "col"
+            c3.style = 10
+            c3.title = f"{zone} Supply vs Demand"
+            c3.y_axis.title = "Units"
+            c3.height = 10
+            c3.width = 15
+            
+            data_sup = Reference(ws2, min_col=helper_col, min_row=data_start, max_row=data_end)
+            data_dem = Reference(ws2, min_col=helper_col+1, min_row=data_start, max_row=data_end)
+            cats = Reference(ws2, min_col=1, min_row=data_start, max_row=data_end)
+            
+            c3.append(Series(data_sup, title="Total Supply"))
+            c3.append(Series(data_dem, title="Total Demand"))
+            c3.set_categories(cats)
+            
+            ws2.add_chart(c3, f"J{chart_anchor_row}")
+
+        # ---------------------------------------------------------
+        # CONDITIONAL FORMATTING
+        # ---------------------------------------------------------
+        
+        # Target: Projected Inventory (Col F)
+        # Red: < 0 (Stockout)
         ws2.conditional_formatting.add(
-            f'G{data_start}:G{data_end}',
-            FormulaRule(formula=[f'LEFT(G{data_start},8)="STOCKOUT"'], fill=red_fill)
+            f'F{data_start}:F{data_end}',
+            FormulaRule(formula=[f'F{data_start}<0'], fill=red_fill)
         )
+        
+        # Purple: > Capacity (Overflow)
+        # Formula: F > G
         ws2.conditional_formatting.add(
-            f'G{data_start}:G{data_end}',
-            FormulaRule(formula=[f'LEFT(G{data_start},8)="OVERFLOW"'], fill=purple_fill)
+            f'F{data_start}:F{data_end}',
+            FormulaRule(formula=[f'F{data_start}>G{data_start}'], fill=purple_fill)
+        )
+        
+        # Green: 0 <= F <= G (Optimal)
+        ws2.conditional_formatting.add(
+            f'F{data_start}:F{data_end}',
+            FormulaRule(formula=[f'AND(F{data_start}>=0, F{data_start}<=G{data_start})'], fill=green_fill)
         )
         
         row += 2
     
     # Column widths
     ws2.column_dimensions['A'].width = 12
-    for col in range(2, 8):
+    for col in range(2, 9):
         ws2.column_dimensions[get_column_letter(col)].width = 14
     
     # =========================================================================
@@ -398,149 +498,123 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
     ws3['A2'] = "Add shipments here. MANUALLY update Outgoing/Incoming in INVENTORY_TETRIS (shifted by Lead Time)."
     ws3['A2'].font = Font(italic=True, color="666666")
     
-    ws3['A4'] = "IMPORTANT: After entering shipments here, update INVENTORY_TETRIS Tab 2:"
-    ws3['A4'].font = Font(bold=True, color="C00000")
-    ws3['A5'] = "• Add NEGATIVE quantity to Origin zone's 'Outgoing' column in the ORDER fortnight"
-    ws3['A5'].font = Font(italic=True, color="666666")
-    ws3['A6'] = "• Add POSITIVE quantity to Destination zone's 'Incoming' column in ARRIVAL fortnight (Order + Lead Time)"
-    ws3['A6'].font = Font(italic=True, color="666666")
+    ws3['A4'] = "SHIPMENT LOG"
+    ws3['A4'].font = section_font
     
-    # Shipment table
-    ws3['A8'] = "SHIPMENT SCHEDULE"
-    ws3['A8'].font = section_font
-    
-    ship_headers = ['#', 'Fortnight', 'Origin', 'Destination', 'Material', 'Mode', 'Quantity', 
-                    'Lead Time', 'Arrival FN']
-    for col, h in enumerate(ship_headers, start=1):
-        cell = ws3.cell(row=9, column=col, value=h)
+    headers = ['Values', 'From Zone', 'To Zone', 'Transport Mode', 'Units', 
+               'Cost/Unit', 'Total Cost', 'Ship FN', 'Lead Time', 'Arrive FN']
+    for col, h in enumerate(headers, start=1):
+        cell = ws3.cell(row=5, column=col, value=h)
         cell.font = header_font
         cell.fill = header_fill
         cell.border = thin_border
     
-    # Pre-fill 10 empty shipment rows
-    for i in range(10):
-        row = 10 + i
+    # Add 20 blank rows for input
+    row = 6
+    for i in range(20):
+        ws3.cell(row=row, column=1, value=f"Shipment {i+1}").border = thin_border
         
-        ws3.cell(row=row, column=1, value=i+1).border = thin_border
+        # From/To/Mode/Units (Input)
+        for c in range(2, 6):
+            cell = ws3.cell(row=row, column=c)
+            cell.border = thin_border
+            cell.fill = input_fill
         
-        cell = ws3.cell(row=row, column=2, value="")
-        cell.border = thin_border
-        cell.fill = input_fill
-        
-        cell = ws3.cell(row=row, column=3, value="")
-        cell.border = thin_border
-        cell.fill = input_fill
-        
-        cell = ws3.cell(row=row, column=4, value="")
-        cell.border = thin_border
-        cell.fill = input_fill
-        
-        cell = ws3.cell(row=row, column=5, value=DEFAULT_MATERIAL)
-        cell.border = thin_border
-        cell.fill = input_fill
-        
-        cell = ws3.cell(row=row, column=6, value="Truck")
-        cell.border = thin_border
-        cell.fill = input_fill
-        
-        cell = ws3.cell(row=row, column=7, value="")
-        cell.border = thin_border
-        cell.fill = input_fill
-        
-        # Lead Time lookup - reference ROUTE_CONFIG Tab 1 (Train=row 6, Truck=row 7, Plane=row 8)
-        cell = ws3.cell(row=row, column=8, value='=IF(F' + str(row) + '="Train",ROUTE_CONFIG!$B$6,IF(F' + str(row) + '="Truck",ROUTE_CONFIG!$B$7,ROUTE_CONFIG!$B$8))')
+        # Cost lookup - Wrap in IF(ISBLANK) to prevent #N/A
+        cell = ws3.cell(row=row, column=6, value=f"=IF(ISBLANK(D{row}), 0, VLOOKUP(D{row}, ROUTE_CONFIG!$A$6:$C$8, 3, FALSE))")
         cell.border = thin_border
         cell.fill = calc_fill
+        cell.number_format = '$#,##0'
         
-        # Arrival FN
-        cell = ws3.cell(row=row, column=9, value=f'=IF(B{row}<>"",B{row}+H{row},"")')
+        # Total Cost
+        cell = ws3.cell(row=row, column=7, value=f"=IF(ISBLANK(D{row}), 0, E{row}*F{row})")
         cell.border = thin_border
         cell.fill = calc_fill
+        cell.number_format = '$#,##0'
+        
+        # Ship FN
+        cell = ws3.cell(row=row, column=8)
+        cell.border = thin_border
+        cell.fill = input_fill
+        cell.alignment = Alignment(horizontal='center')
+        
+        # Lead Time lookup
+        cell = ws3.cell(row=row, column=9, value=f"=IF(ISBLANK(D{row}), 0, VLOOKUP(D{row}, ROUTE_CONFIG!$A$6:$C$8, 2, FALSE))")
+        cell.border = thin_border
+        cell.fill = calc_fill
+        cell.alignment = Alignment(horizontal='center')
+        
+        # Arrive FN
+        cell = ws3.cell(row=row, column=10, value=f"=IF(ISBLANK(D{row}), 0, H{row}+I{row})")
+        cell.border = thin_border
+        cell.fill = output_fill
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+        
+        row += 1
     
     # Column widths
-    ws3.column_dimensions['A'].width = 5
-    ws3.column_dimensions['B'].width = 12
-    ws3.column_dimensions['C'].width = 12
-    ws3.column_dimensions['D'].width = 14
-    ws3.column_dimensions['E'].width = 14
-    ws3.column_dimensions['F'].width = 10
-    ws3.column_dimensions['G'].width = 12
-    ws3.column_dimensions['H'].width = 12
-    ws3.column_dimensions['I'].width = 12
+    ws3.column_dimensions['A'].width = 12
+    for col in range(2, 11):
+        ws3.column_dimensions[get_column_letter(col)].width = 12
     
     # =========================================================================
     # TAB 4: UPLOAD_READY_LOGISTICS
     # =========================================================================
     ws4 = wb.create_sheet("UPLOAD_READY_LOGISTICS")
     
-    ws4['A1'] = "LOGISTICS DECISIONS - ExSim Upload Format (Side-by-Side)"
+    ws4['A1'] = "LOGISTICS DECISIONS - ExSim Upload Format"
     ws4['A1'].font = title_font
-    ws4['A2'] = "Copy these values to ExSim Logistics upload"
+    ws4['A2'] = "Copy these values to the web platform."
     ws4['A2'].font = Font(italic=True, color="666666")
     
-    # Section 1: Warehouses (Left)
-    ws4['A4'] = "Warehouses"
+    ws4['A4'] = "Planned Shipments"
     ws4['A4'].font = section_font
     
-    wh_headers = ['Zone', 'Buy Modules', 'Rent Modules']
-    for col, h in enumerate(wh_headers, start=1):
+    headers = ['From', 'To', 'Material', 'Amount', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8']
+    for col, h in enumerate(headers, start=1):
         cell = ws4.cell(row=5, column=col, value=h)
         cell.font = header_font
         cell.fill = header_fill
         cell.border = thin_border
     
+    # Map shipments from SHIPMENT_BUILDER (Simplified view)
+    # Since we can't do complex aggregation easily in simplified Excel formulas, 
+    # we'll just link the first 20 rows directly.
+    
     row = 6
-    for zone in ZONES:
-        cell = ws4.cell(row=row, column=1, value=zone)
-        cell.border = thin_border
-        cell.fill = zone_fills[zone]
-        cell.font = Font(color="FFFFFF")
+    for i in range(20):
+        src_row = 6 + i
         
-        # Buy modules (input)
-        cell = ws4.cell(row=row, column=2, value=0)
+        # From
+        cell = ws4.cell(row=row, column=1, value=f"=SHIPMENT_BUILDER!B{src_row}")
         cell.border = thin_border
-        cell.fill = input_fill
+        cell.fill = ref_fill
         
-        # Rent modules (link to INVENTORY_TETRIS)
-        zone_info = zone_data_rows.get(zone, {})
-        rent_cell = zone_info.get('rent_cell', 'H5')
-        cell = ws4.cell(row=row, column=3, value=f"=INVENTORY_TETRIS!{rent_cell}")
+        # To
+        cell = ws4.cell(row=row, column=2, value=f"=SHIPMENT_BUILDER!C{src_row}")
         cell.border = thin_border
-        cell.fill = calc_fill
+        cell.fill = ref_fill
         
-        row += 1
-    
-    # Section 2: Shipments (Right, starting at column 6)
-    ship_col = 6
-    ws4.cell(row=4, column=ship_col, value="Shipments").font = section_font
-    
-    ship_headers = ['Fortnight', 'Origin', 'Destination', 'Material', 'Transport', 'Quantity']
-    for col, h in enumerate(ship_headers):
-        cell = ws4.cell(row=5, column=ship_col+col, value=h)
-        cell.font = header_font
-        cell.fill = header_fill
+        # Material
+        cell = ws4.cell(row=row, column=3, value=DEFAULT_MATERIAL)
         cell.border = thin_border
-    
-    # Link to SHIPMENT_BUILDER
-    for i in range(10):
-        row = 6 + i
-        builder_row = 10 + i
         
-        for col in range(6):
-            # Map columns: B->Fortnight, C->Origin, D->Dest, E->Material, F->Mode, G->Qty
-            builder_col = ['B', 'C', 'D', 'E', 'F', 'G'][col]
-            cell = ws4.cell(row=row, column=ship_col+col, 
-                value=f"=SHIPMENT_BUILDER!{builder_col}{builder_row}")
+        # Amount (Total)
+        cell = ws4.cell(row=row, column=4, value=f"=SHIPMENT_BUILDER!E{src_row}")
+        cell.border = thin_border
+        cell.fill = ref_fill
+        
+        # F1-F8 matrix (Logic: IF ShipFN = FN, 1, 0) - Simplified as 0/1 flag or Amount?
+        # ExSim usually wants the Amount in the specific FN column.
+        for fn in FORTNIGHTS:
+            cell = ws4.cell(row=row, column=4+fn, 
+                value=f'=IF(SHIPMENT_BUILDER!$H${src_row}={fn}, SHIPMENT_BUILDER!$E${src_row}, 0)')
             cell.border = thin_border
             cell.fill = calc_fill
-    
-    # Column widths
-    ws4.column_dimensions['A'].width = 10
-    ws4.column_dimensions['B'].width = 14
-    ws4.column_dimensions['C'].width = 14
-    for col in range(ship_col, ship_col+6):
-        ws4.column_dimensions[get_column_letter(col)].width = 12
-    
+            
+        row += 1
+
     # Save
     wb.save(OUTPUT_FILE)
     print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
@@ -553,17 +627,14 @@ def main():
     
     print("\n[*] Loading data files...")
     
-    # Finished Goods by Zone
-    fg_path = DATA_FOLDER / "finished_goods_inventory.xlsx"
-    if fg_path.exists():
-        inventory_data = load_finished_goods_by_zone(fg_path)
-        for zone in ZONES:
-            inv = inventory_data[zone]
-            if inv['capacity'] > 0 or inv['inventory'] > 0:
-                print(f"  [OK] {zone}: Inv={inv['inventory']:.0f}, Cap={inv['capacity']}")
+    # Finished Goods Inventory
+    inv_path = DATA_FOLDER / "finished_goods_inventory.xlsx"
+    if inv_path.exists():
+        inv_data = load_finished_goods_by_zone(inv_path)
+        print(f"  [OK] Loaded finished goods inventory")
     else:
-        inventory_data = load_finished_goods_by_zone(None)
-        print("  [!] File not found. Using 0 values.")
+        inv_data = load_finished_goods_by_zone(None)
+        print("  [!] Using default inventory data")
     
     # Template
     template_path = DATA_FOLDER / "Logistics Decisions.xlsx"
@@ -574,22 +645,17 @@ def main():
         print("  [!] Using default template layout")
     
     # Shipping Costs
-    costs_path = DATA_FOLDER / "logistics.xlsx"
-    if costs_path.exists():
-        cost_data = load_shipping_costs(costs_path)
-        print(f"  [OK] Loaded shipping costs")
-    else:
-        cost_data = load_shipping_costs(None)
-        print("  [!] File not found. Using 0 values.")
+    cost_path = DATA_FOLDER / "shipping_costs.xlsx"
+    cost_data = load_shipping_costs(cost_path) if cost_path.exists() else {'total_shipping_cost': 0}
     
     print("\n[*] Generating Logistics Dashboard...")
     
-    create_logistics_dashboard(inventory_data, template_data, cost_data)
+    create_logistics_dashboard(inv_data, template_data, cost_data)
     
     print("\nSheets created:")
-    print("  * ROUTE_CONFIG (Transport Modes & Warehouse Costs)")
-    print("  * INVENTORY_TETRIS (Zone-by-Zone Balance)")
-    print("  * SHIPMENT_BUILDER (Plan Transfers)")
+    print("  * ROUTE_CONFIG (Transport Modes & Costs)")
+    print("  * INVENTORY_TETRIS (Zone Balancing & Stockout Checks)")
+    print("  * SHIPMENT_BUILDER (Transfer Planning)")
     print("  * UPLOAD_READY_LOGISTICS (ExSim Format)")
 
 

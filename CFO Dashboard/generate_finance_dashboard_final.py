@@ -13,6 +13,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule
+from openpyxl.chart import LineChart, BarChart, Reference, Series
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -482,6 +483,29 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
         FormulaRule(formula=[f'B{ending_cash_row}>200000'], fill=green_fill)
     )
     
+    # ---------------------------------------------------------
+    # CHART: Liquidity Forecast (Line Chart)
+    # ---------------------------------------------------------
+    chart_liq = LineChart()
+    chart_liq.title = "Liquidity Forecast (Cash Balance)"
+    chart_liq.style = 12
+    chart_liq.y_axis.title = "Cash Balance ($)"
+    chart_liq.x_axis.title = "Fortnight"
+    chart_liq.height = 10
+    chart_liq.width = 15
+
+    # Data: Ending Cash (Row ending_cash_row, Cols B-I)
+    # Fortnights are columns 2 to 9
+    data_cash = Reference(ws1, min_col=2, min_row=ending_cash_row, max_col=9)
+    s_cash = Series(data_cash, title="Ending Cash")
+    chart_liq.append(s_cash)
+
+    # Categories (FN1..FN8 headers at Row 14)
+    cats_liq = Reference(ws1, min_col=2, min_row=14, max_col=9)
+    chart_liq.set_categories(cats_liq)
+
+    ws1.add_chart(chart_liq, "H2")
+    
     # Column widths
     ws1.column_dimensions['A'].width = 28
     for col in range(2, 10):
@@ -652,14 +676,22 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     cell.border = thin_border
     cell.font = Font(bold=True)
     
-    # Add conditional formatting for net income
+    # Add conditional formatting for net income (Text Color instead of Fill)
     ws2.conditional_formatting.add(
         f'C{net_income_row}',
-        FormulaRule(formula=[f'C{net_income_row}<0'], fill=red_fill)
+        FormulaRule(formula=[f'C{net_income_row}<0'], font=Font(color="C00000", bold=True))
     )
     ws2.conditional_formatting.add(
         f'C{net_income_row}',
-        FormulaRule(formula=[f'C{net_income_row}>0'], fill=green_fill)
+        FormulaRule(formula=[f'C{net_income_row}>0'], font=Font(color="00B050", bold=True))
+    )
+    
+    # Variance % Formatting (Yellow if > 10% deviation)
+    # Variance is in Column 4 (D)
+    yellow_fill = PatternFill(start_color="FFEB84", end_color="FFEB84", fill_type="solid")
+    ws2.conditional_formatting.add(
+        f'D12:D{net_income_row}',
+        FormulaRule(formula=[f'ABS(D12)>0.1'], fill=yellow_fill)
     )
     
     # Column widths
@@ -759,11 +791,54 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     cell.font = Font(bold=True)
     row += 1
     
-    ws3.cell(row=row, column=1, value="Equity Check").border = thin_border
     cell = ws3.cell(row=row, column=2, 
         value='=IF(B8<0,"CRITICAL: Equity Erosion. Retained earnings negative.","Equity OK")')
     cell.border = thin_border
     cell.font = Font(bold=True)
+    
+    # ---------------------------------------------------------
+    # CHART: Solvency Gauge (Bar Chart with Limit Line)
+    # ---------------------------------------------------------
+    
+    # Helper Data for Chart (Hidden Columns H-J)
+    ws3['H12'] = "Metric"
+    ws3['I12'] = "Ratio"
+    ws3['J12'] = "Limit"
+    
+    ws3['H13'] = "Current"
+    ws3['I13'] = f"=B{current_debt_row}"
+    ws3['J13'] = 0.6
+    
+    ws3['H14'] = "Post-Decision"
+    ws3['I14'] = f"=B{post_debt_row}"
+    ws3['J14'] = 0.6
+    
+    # Chart
+    c_bar = BarChart()
+    c_bar.title = "Solvency Gauge (Debt Ratio)"
+    c_bar.style = 10
+    c_bar.height = 10
+    c_bar.width = 10
+    
+    data_bar = Reference(ws3, min_col=9, min_row=12, max_row=14) # Includes header
+    c_bar.add_data(data_bar, titles_from_data=True)
+    c_bar.set_categories(Reference(ws3, min_col=8, min_row=13, max_row=14))
+    
+    c_line = LineChart()
+    data_line = Reference(ws3, min_col=10, min_row=12, max_row=14) # Includes header
+    c_line.add_data(data_line, titles_from_data=True)
+    c_line.y_axis.axId = 200 # Separate axis? No, same axis for comparison.
+    # Actually if we want same axis we don't set axId or we set it to same.
+    # By default openpyxl combo puts them on same axis if not specified otherwise usually.
+    
+    # Style line
+    s_line = c_line.series[0]
+    s_line.graphicalProperties.line.solidFill = "FF0000"
+    s_line.graphicalProperties.line.width = 20000
+    
+    c_bar += c_line
+    
+    ws3.add_chart(c_bar, "D12")
     
     # Column widths
     ws3.column_dimensions['A'].width = 30

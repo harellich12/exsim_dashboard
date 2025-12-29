@@ -12,7 +12,8 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.formatting.rule import FormulaRule
+from openpyxl.formatting.rule import FormulaRule, DataBarRule
+from openpyxl.chart import LineChart, BarChart, Reference, Series
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -29,7 +30,6 @@ PARTS = ["Part A", "Part B"]
 PIECES = ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"]
 SUPPLIERS = ["Supplier A", "Supplier B", "Supplier C"]
 
-# Default supplier configuration (per ExSim template: 3 suppliers per part)
 # Default supplier configuration
 DEFAULT_SUPPLIERS = {
     "Part A": [
@@ -191,7 +191,6 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     output_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     ref_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
     red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-    orange_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
@@ -327,6 +326,10 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     cell.fill = calc_fill
     cell.number_format = '0.0%'
     
+    # Add Data Bar for Efficiency
+    rule = DataBarRule(start_type='min', end_type='max', color="638EC6", showValue=None, minLength=None, maxLength=None)
+    ws2.conditional_formatting.add("B11", rule)
+    
     # Efficiency Flag
     ws2.cell(row=13, column=1, value="Efficiency Flag").border = thin_border
     cell = ws2.cell(row=13, column=2)
@@ -388,6 +391,10 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     row += 2
     
     part_rows = {}
+    order_rows = {}
+    
+    chart_start_row = row 
+    
     for part in PARTS:
         ws3.cell(row=row, column=1, value=f"{part.upper()}").font = Font(bold=True, color="2F5496")
         row += 1
@@ -441,25 +448,12 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
             cell.border = thin_border
             cell.fill = output_fill
         row += 2
-    
-    # Add conditional formatting for negative inventory
-    for part, rows in part_rows.items():
-        ws3.conditional_formatting.add(
-            f'B{rows["projected"]}:I{rows["projected"]}',
-            FormulaRule(formula=[f'B{rows["projected"]}<0'], fill=red_fill, font=Font(bold=True, color="9C0006"))
-        )
-    
-    # Section C: Sourcing Strategy
-    ws3.cell(row=row, column=1, value="SECTION C: SOURCING STRATEGY (Order Inputs)").font = section_font
-    ws3.cell(row=row+1, column=1, value="NOTE: Orders arrive AFTER Lead Time. Enter in the FN you want to ORDER, not when it arrives.").font = Font(italic=True, color="666666")
-    row += 3
-    
-    order_rows = {}
-    for part in PARTS:
+        
+        # ORDERS
+        order_rows[part] = {}
         ws3.cell(row=row, column=1, value=f"ORDERS FOR {part.upper()}").font = Font(bold=True)
         row += 1
         
-        order_rows[part] = {}
         suppliers = DEFAULT_SUPPLIERS.get(part, [])
         for supplier in suppliers:
             name = supplier['name']
@@ -473,16 +467,62 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
                 cell.fill = input_fill
             order_rows[part][name] = row
             row += 1
-        
-        # Batch compliance check
-        ws3.cell(row=row, column=1, value="Batch Compliance Check").border = thin_border
-        for fn in FORTNIGHTS:
-            col = 1 + fn
-            # Check if orders are multiples of batch size
-            cell = ws3.cell(row=row, column=col, value="OK")  # Simplified - would need complex formula
-            cell.border = thin_border
-            cell.fill = calc_fill
+            
         row += 2
+    
+    # Add conditional formatting for negative inventory (Red Fill / White Text)
+    for part, rows in part_rows.items():
+        ws3.conditional_formatting.add(
+            f'B{rows["projected"]}:I{rows["projected"]}',
+            FormulaRule(formula=[f'B{rows["projected"]}<0'], fill=red_fill, font=Font(bold=True, color="FFFFFF"))
+        )
+
+    # -------------------------------------------------------------
+    # CHART: Inventory Sawtooth & Stockout Risk
+    # -------------------------------------------------------------
+    
+    # Create hidden row for Stockout Line (0s)
+    stockout_row = row + 5
+    ws3.cell(row=stockout_row, column=1, value="Stockout Limit")
+    for f in range(1, 9):
+        ws3.cell(row=stockout_row, column=1+f, value=0)
+    
+    # Hide the row? Openpyxl row dimensions hidden=True
+    ws3.row_dimensions[stockout_row].hidden = True
+    
+    chart = LineChart()
+    chart.title = "Inventory Sawtooth & Stockout Risk"
+    chart.style = 12
+    chart.y_axis.title = "Inventory Units"
+    chart.x_axis.title = "Fortnight"
+    chart.height = 12
+    chart.width = 20
+    
+    # Series
+    # Part A
+    part_a_row = part_rows["Part A"]["projected"]
+    data_a = Reference(ws3, min_col=2, min_row=part_a_row, max_col=9)
+    s1 = Series(data_a, title="Part A Inv")
+    chart.append(s1)
+
+    # Part B
+    part_b_row = part_rows["Part B"]["projected"]
+    data_b = Reference(ws3, min_col=2, min_row=part_b_row, max_col=9)
+    s2 = Series(data_b, title="Part B Inv")
+    chart.append(s2)
+    
+    # Stockout Line (Red)
+    data_zero = Reference(ws3, min_col=2, min_row=stockout_row, max_col=9)
+    s3 = Series(data_zero, title="Stockout Line")
+    s3.graphicalProperties.line.solidFill = "FF0000"
+    s3.graphicalProperties.line.width = 20000 # Thick
+    chart.append(s3)
+    
+    # Categories (FN1..FN8 from header)
+    cats = Reference(ws3, min_col=2, min_row=5, max_col=9)
+    chart.set_categories(cats)
+    
+    ws3.add_chart(chart, "K2")
     
     # Column widths
     ws3.column_dimensions['A'].width = 35
@@ -497,11 +537,11 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     ws4['A1'] = "CASH FLOW PREVIEW - Procurement Spending"
     ws4['A1'].font = title_font
     
-    ws4['A3'] = "ESTIMATED OUTFLOW BY FORTNIGHT"
+    ws4['A3'] = "ESTIMATED OUTFLOW BY SUPPLIER"
     ws4['A3'].font = section_font
     
     # Headers
-    ws4.cell(row=5, column=1, value="Category").font = header_font
+    ws4.cell(row=5, column=1, value="Supplier").font = header_font
     ws4.cell(row=5, column=1).fill = header_fill
     for fn in FORTNIGHTS:
         cell = ws4.cell(row=5, column=1+fn, value=f"FN{fn}")
@@ -511,32 +551,40 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     cell.font = header_font
     cell.fill = header_fill
     
-    # Placeholder rows for each part
     row = 6
-    for part in PARTS:
-        ws4.cell(row=row, column=1, value=f"{part} Orders").border = thin_border
+    supplier_data_rows = {}
+    
+    for supplier_name in SUPPLIERS:
+        ws4.cell(row=row, column=1, value=supplier_name).border = thin_border
+        
+        # Calculate sum of orders for this supplier across Part A and Part B
+        # Link to MRP_ENGINE!{Col}{Row}
+        # Ref: order_rows[part][supplier_name]
+        
         for fn in FORTNIGHTS:
-            cell = ws4.cell(row=row, column=1+fn, value=0)
+            col_letter = get_column_letter(1+fn)
+            # Formula: =SUM(MRP_ENGINE!{col}{PartA_Row}, MRP_ENGINE!{col}{PartB_Row})
+            refs = []
+            for part in PARTS:
+                r = order_rows.get(part, {}).get(supplier_name)
+                if r:
+                    refs.append(f"MRP_ENGINE!{col_letter}{r}")
+            
+            formula = "=" + "+".join(refs) if refs else "=0"
+            cell = ws4.cell(row=row, column=1+fn, value=formula)
             cell.border = thin_border
             cell.fill = calc_fill
             cell.number_format = '$#,##0'
+        
+        # Total
         cell = ws4.cell(row=row, column=10, value=f"=SUM(B{row}:I{row})")
         cell.border = thin_border
         cell.fill = calc_fill
         cell.number_format = '$#,##0'
+        
+        supplier_data_rows[supplier_name] = row
         row += 1
-    
-    # Pieces orders
-    ws4.cell(row=row, column=1, value="Pieces Orders").border = thin_border
-    for fn in FORTNIGHTS:
-        cell = ws4.cell(row=row, column=1+fn, value=0)
-        cell.border = thin_border
-        cell.fill = calc_fill
-        cell.number_format = '$#,##0'
-    cell = ws4.cell(row=row, column=10, value=f"=SUM(B{row}:I{row})")
-    cell.border = thin_border
-    row += 1
-    
+        
     # Total row
     ws4.cell(row=row, column=1, value="TOTAL SPEND").font = Font(bold=True)
     for fn in FORTNIGHTS:
@@ -550,22 +598,37 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     cell.font = Font(bold=True)
     cell.number_format = '$#,##0'
     total_row = row
-    row += 1
     
-    # Cumulative spend
-    ws4.cell(row=row, column=1, value="CUMULATIVE SPEND").font = Font(bold=True)
-    for fn in FORTNIGHTS:
-        col = 1 + fn
-        if fn == 1:
-            cell = ws4.cell(row=row, column=col, value=f"=B{total_row}")
-        else:
-            cell = ws4.cell(row=row, column=col, value=f"={get_column_letter(col-1)}{row}+{get_column_letter(col)}{total_row}")
-        cell.border = thin_border
-        cell.fill = ref_fill
-        cell.number_format = '$#,##0'
+    # -------------------------------------------------------------
+    # CHART: Cash Drain Heatmap (Stacked Bar)
+    # -------------------------------------------------------------
+    chart_cash = BarChart()
+    chart_cash.title = "Cash Drain Heatmap by Supplier"
+    chart_cash.type = "col"
+    chart_cash.style = 10
+    chart_cash.grouping = "stacked"
+    chart_cash.overlap = 100
+    chart_cash.y_axis.title = "Cash Outflow ($)"
+    chart_cash.x_axis.title = "Fortnight"
+    chart_cash.height = 10
+    chart_cash.width = 15
+    
+    # Series
+    # Rows 6, 7, 8 are Supplier A, B, C
+    categories = Reference(ws4, min_col=2, min_row=5, max_col=9)
+    
+    for i, supp in enumerate(SUPPLIERS):
+        r = supplier_data_rows[supp]
+        data_s = Reference(ws4, min_col=2, min_row=r, max_col=9)
+        ser = Series(data_s, title=supp)
+        chart_cash.append(ser)
+
+    chart_cash.set_categories(categories)
+    ws4.add_chart(chart_cash, "A12") # Place below table
+
     
     # Budget tracking
-    row += 3
+    row += 20
     ws4.cell(row=row, column=1, value="BUDGET TRACKING").font = section_font
     row += 1
     

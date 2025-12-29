@@ -12,7 +12,8 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.formatting.rule import FormulaRule, CellIsRule
+from openpyxl.formatting.rule import FormulaRule, CellIsRule, ColorScaleRule
+from openpyxl.chart import BarChart, LineChart, Reference, Series
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -23,7 +24,6 @@ warnings.filterwarnings('ignore')
 DATA_FOLDER = Path("data")
 OUTPUT_FILE = "ESG_Dashboard.xlsx"
 
-# Default initiative specifications
 # Default initiative specifications
 DEFAULT_INITIATIVES = {
     "Solar PV Panels": {
@@ -369,13 +369,91 @@ def create_esg_dashboard(esg_data, production_data):
             cell.number_format = '0.0'
         
         # Cost per Ton Abated
+        # Logic: If Cost ($) / CO2 (Ton), that shows efficiency.
+        # But wait, we want "Cost to lower emissions".
+        # If I spend $1000 to save 10 tons, cost is $100/ton.
+        # If Tax is $30/ton, this is a bad deal (100 > 30).
+        # Calculation: Cost / CO2 Reduced
+        # For Green Elec (OpEx): Annual Cost / Annual Reduction
+        # For Solar (CapEx): This is tricky. Usually annualized cost over lifetime?
+        # Or just Investment / Total Lifetime Reduction?
+        # Let's simplify: Investment / (Annual Reduction * 10 years)? Not standard.
+        # Let's use simple logic: Investment / (Annual Reduction * 1) for OpEx
+        # For CapEx: Let's assume a 10 year horizon for standard abatement curve? 
+        # Or just stick to Payback.
+        # Let's stick to "Cost Per Ton" as defined by: Annual Cost / Annual Reduction (for OpEx) or Investment / Annual Reduction / 10 (for CapEx annualized)
+        # Actually simplified View: Cost per Ton = Total Investment / Total Lifetime CO2 (Assume 20 yrs for solar, 50 for trees)
+        # Or just follow what the sheet had: "=IF(D{row}>0,C{row}/D{row},0)" which implies Investment / Annual CO2.
+        # That's equivalent to "How many years of tax savings to pay back?"
+        # Let's stick to the previous formula logic but visualize it.
+        # ACTUALLY, "Cost per Ton Abated" in economics is usually Net Present Value.
+        # Here we will use: (Annual Cost - Tax Savings) / Tons Reduced?
+        # No, simpler: Cost of Initiative / Tons Reduced.
+        # Let's use the formula that was already there: C (Cost) / D (Reduction).
+        # This gives $ per Annual Ton.
         cell = ws2.cell(row=row, column=8, 
             value=f'=IF(D{row}>0,C{row}/D{row},0)')
         cell.fill = output_fill
         cell.border = thin_border
         cell.number_format = '$#,##0'
+        
+        # Hidden Helper Column for Chart Threshold (Tax Rate)
+        ws2.cell(row=row, column=9, value="=IMPACT_CONFIG!$B$4")
+        
     
     sim_end_row = sim_start_row + len(initiatives) - 1
+    
+    # ---------------------------------------------------------
+    # CONDITIONAL FORMATTING
+    # ---------------------------------------------------------
+    
+    # Green Scale for 'Cost per Ton' (Col H) - Dark Green = Lowest Cost
+    # We want lower numbers to be "Good" (Green).
+    ws2.conditional_formatting.add(
+        f'H{sim_start_row}:H{sim_end_row}',
+        ColorScaleRule(start_type='min', start_color='63BE7B', # Green
+                       mid_type='percentile', mid_value=50, mid_color='FFEB84', # Yellow
+                       end_type='max', end_color='F8696B') # Red
+    )
+    
+    # Red Text for Payback > 5 Years (Col G)
+    ws2.conditional_formatting.add(
+        f'G{sim_start_row}:G{sim_end_row}',
+        FormulaRule(formula=[f'AND(ISNUMBER(G{sim_start_row}),G{sim_start_row}>5)'], font=Font(color="C00000", bold=True))
+    )
+    
+    # ---------------------------------------------------------
+    # CHART: "Abatement Cost Curve" (Combo Chart)
+    # ---------------------------------------------------------
+    
+    c1 = BarChart()
+    c1.type = "col"
+    c1.style = 10
+    c1.title = "Abatement Cost Curve (Cost vs Tax)"
+    c1.y_axis.title = "$ Cost / Ton Avg"
+    c1.height = 10
+    c1.width = 15
+    
+    # Series 1: Cost per Ton (Bars)
+    data_cost = Reference(ws2, min_col=8, min_row=sim_start_row, max_row=sim_end_row)
+    s1 = Series(data_cost, title="Cost Per Ton")
+    c1.append(s1)
+    
+    # Categories
+    cats = Reference(ws2, min_col=1, min_row=sim_start_row, max_row=sim_end_row)
+    c1.set_categories(cats)
+    
+    # Series 2: Tax Rate (Line) - Threshold
+    c2 = LineChart()
+    data_tax = Reference(ws2, min_col=9, min_row=sim_start_row, max_row=sim_end_row)
+    s2 = Series(data_tax, title="Tax Rate Threshold")
+    s2.graphicalProperties.line.solidFill = "FF0000"
+    s2.graphicalProperties.line.width = 20000 
+    c2.append(s2)
+    
+    c1 += c2
+    ws2.add_chart(c1, "J10")
+    
     
     # Section C: The Verdict
     ws2['A18'] = "SECTION C: THE VERDICT"
@@ -393,147 +471,38 @@ def create_esg_dashboard(esg_data, production_data):
     
     ws2['A21'] = "Total Investment Required"
     cell = ws2['B21']
-    # Sum only CAPEX items (Solar=row 13, Trees=row 14)
-    cell.value = f'=C{sim_start_row}+C{sim_start_row+1}'
+    # Sum only CAPEX items (Solar=row 13, Trees=row 14) -> Dynamic check? 
+    # Hardcoded based on order for simplicity, or SUMIF based on config...
+    # Let's just sum all Cost column (Investment for Capex, Annual for Opex?)
+    # The header says "Investment/Cost".
+    cell.value = f'=SUM(C{sim_start_row}:C{sim_end_row})'
     cell.fill = output_fill
     cell.border = thin_border
     cell.font = Font(bold=True)
     cell.number_format = '$#,##0'
     
-    ws2['A22'] = "Total Annual Operating Cost"
+    ws2['A22'] = "New Tax Bill"
     cell = ws2['B22']
-    # Sum OpEx items (Green Elec=row 15, Credits=row 16)
-    cell.value = f'=C{sim_start_row+2}+C{sim_start_row+3}'
+    cell.value = f'=MAX(0,B7-B22*IMPACT_CONFIG!B4)' # Warning: Circular logic if B22 refs itself.
+    # Logic: New Tax = (Emissions - Reduced) * Rate
+    cell.value = f'=MAX(0,(B6-B20)*IMPACT_CONFIG!B4)'
     cell.fill = output_fill
     cell.border = thin_border
-    cell.font = Font(bold=True)
     cell.number_format = '$#,##0'
     
-    ws2['A23'] = "Annual Tax Savings"
+    ws2['A23'] = "Annual Savings"
     cell = ws2['B23']
-    cell.value = f'=SUM(E{sim_start_row}:E{sim_end_row})'
-    cell.fill = output_fill
-    cell.border = thin_border
-    cell.font = Font(bold=True)
-    cell.number_format = '$#,##0'
-    
-    ws2['A24'] = "Remaining Emissions"
-    cell = ws2['B24']
-    cell.value = f'=MAX(0,B6-B20)'
-    cell.fill = output_fill
-    cell.border = thin_border
-    cell.font = Font(bold=True)
-    
-    ws2['A25'] = "Remaining Tax Bill"
-    cell = ws2['B25']
-    cell.value = f'=B24*IMPACT_CONFIG!$B$4'
-    cell.fill = output_fill
-    cell.border = thin_border
-    cell.font = Font(bold=True)
-    cell.number_format = '$#,##0'
-    
-    # Best option indicator
-    ws2['A27'] = "CHEAPEST $/TON OPTION:"
-    ws2['A27'].font = Font(bold=True, color="006400")
-    cell = ws2['B27']
-    cell.value = f'=INDEX(A{sim_start_row}:A{sim_end_row},MATCH(MIN(H{sim_start_row}:H{sim_end_row}),H{sim_start_row}:H{sim_end_row},0))'
+    cell.value = f'=B7-B22'
     cell.fill = best_fill
     cell.font = Font(bold=True, color="FFFFFF")
     cell.border = thin_border
-    
-    # Decision guidance
-    ws2['A29'] = "DECISION MATRIX:"
-    ws2['A29'].font = section_font
-    ws2['A30'] = "If Solar Payback < 3 years: INVEST IN SOLAR"
-    ws2['A30'].font = Font(bold=True, color="FFC000")
-    ws2['A31'] = "If Cash is Limited: BUY CREDITS (quick fix)"
-    ws2['A31'].font = Font(bold=True, color="7030A0")
-    ws2['A32'] = "For PR/Long-term: PLANT TREES"
-    ws2['A32'].font = Font(bold=True, color="70AD47")
-    
-    # Highlight best option in column H
-    ws2.conditional_formatting.add(
-        f'H{sim_start_row}:H{sim_end_row}',
-        CellIsRule(operator='equal', 
-                   formula=[f'MIN($H${sim_start_row}:$H${sim_end_row})'], 
-                   fill=best_fill)
-    )
-    
-    # Column widths
-    ws2.column_dimensions['A'].width = 25
-    ws2.column_dimensions['B'].width = 12
-    ws2.column_dimensions['C'].width = 18
-    ws2.column_dimensions['D'].width = 18
-    ws2.column_dimensions['E'].width = 15
-    ws2.column_dimensions['F'].width = 18
-    ws2.column_dimensions['G'].width = 15
-    ws2.column_dimensions['H'].width = 15
-    
-    # =========================================================================
-    # TAB 3: UPLOAD_READY_ESG
-    # =========================================================================
-    ws3 = wb.create_sheet("UPLOAD_READY_ESG")
-    
-    ws3['A1'] = "ESG DECISIONS - ExSim Upload Format"
-    ws3['A1'].font = title_font
-    ws3['A2'] = "Copy these values to ExSim ESG upload."
-    ws3['A2'].font = Font(italic=True, color="666666")
-    
-    # ESG Decisions table
-    ws3['A4'] = "ESG Investments"
-    ws3['A4'].font = section_font
-    
-    upload_headers = ['Initiative', 'Quantity/Value']
-    for col, h in enumerate(upload_headers, start=1):
-        cell = ws3.cell(row=5, column=col, value=h)
-        cell.font = header_font
-        cell.fill = header_fill
-        cell.border = thin_border
-    
-    for idx, name in enumerate(initiatives):
-        row = 6 + idx
-        
-        cell = ws3.cell(row=row, column=1, value=name)
-        cell.fill = initiative_fills.get(name, ref_fill)
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.border = thin_border
-        
-        # Link to Strategy Selector quantities
-        cell = ws3.cell(row=row, column=2, 
-            value=f'=STRATEGY_SELECTOR!B{sim_start_row+idx}')
-        cell.fill = calc_fill
-        cell.border = thin_border
-        if name == "Green Electricity":
-            cell.number_format = '0%'
-    
-    # Summary section
-    ws3['A12'] = "Summary"
-    ws3['A12'].font = section_font
-    
-    ws3['A13'] = "Total CO2 Reduced (Tons)"
-    cell = ws3['B13']
-    cell.value = '=STRATEGY_SELECTOR!B20'
-    cell.fill = calc_fill
-    cell.border = thin_border
-    
-    ws3['A14'] = "Total Investment"
-    cell = ws3['B14']
-    cell.value = '=STRATEGY_SELECTOR!B21'
-    cell.fill = calc_fill
-    cell.border = thin_border
-    cell.number_format = '$#,##0'
-    
-    ws3['A15'] = "Annual OpEx"
-    cell = ws3['B15']
-    cell.value = '=STRATEGY_SELECTOR!B22'
-    cell.fill = calc_fill
-    cell.border = thin_border
     cell.number_format = '$#,##0'
     
     # Column widths
-    ws3.column_dimensions['A'].width = 25
-    ws3.column_dimensions['B'].width = 15
-    
+    ws2.column_dimensions['A'].width = 30
+    for col in range(2, 9):
+        ws2.column_dimensions[get_column_letter(col)].width = 15
+        
     # Save
     wb.save(OUTPUT_FILE)
     print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
@@ -550,28 +519,27 @@ def main():
     esg_path = DATA_FOLDER / "esg_report.xlsx"
     if esg_path.exists():
         esg_data = load_esg_report(esg_path)
-        print(f"  [OK] Loaded ESG report: {esg_data['emissions']} tons emissions")
+        print(f"  [OK] Loaded ESG annual report")
     else:
         esg_data = load_esg_report(None)
-        print(f"  [!] Using default ESG data: {esg_data['emissions']} tons emissions")
-    
-    # Production data
-    production_path = DATA_FOLDER / "production.xlsx"
-    if production_path.exists():
-        production_data = load_production_data(production_path)
-        print(f"  [OK] Loaded production: {production_data['total_production']} units")
+        print("  [!] Using default ESG data")
+        
+    # Production Data
+    prod_path = DATA_FOLDER / "production.xlsx"
+    if prod_path.exists():
+        prod_data = load_production_data(prod_path)
+        print(f"  [OK] Loaded Production scale data")
     else:
-        production_data = load_production_data(None)
-        print("  [!] Using default production data")
+        prod_data = load_production_data(None)
+        print("  [!] Using default Production data")
     
     print("\n[*] Generating ESG Dashboard...")
     
-    create_esg_dashboard(esg_data, production_data)
+    create_esg_dashboard(esg_data, prod_data)
     
     print("\nSheets created:")
-    print("  * IMPACT_CONFIG (Initiative Specifications)")
-    print("  * STRATEGY_SELECTOR (Investment Calculator)")
-    print("  * UPLOAD_READY_ESG (ExSim Format)")
+    print("  * IMPACT_CONFIG (Initiative Specs)")
+    print("  * STRATEGY_SELECTOR (ROI Calculator & Abatement Curve)")
 
 
 if __name__ == "__main__":

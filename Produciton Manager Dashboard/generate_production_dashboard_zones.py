@@ -12,7 +12,8 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.formatting.rule import FormulaRule
+from openpyxl.formatting.rule import FormulaRule, CellIsRule
+from openpyxl.chart import BarChart, LineChart, Reference, Series
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -31,6 +32,8 @@ MACHINE_TYPES = ["M1", "M2", "M3-alpha", "M3-beta", "M4"]
 # Default production parameters
 DEFAULT_NOMINAL_RATE = 200  # Units per machine per FN
 DEFAULT_VARIABLE_COST = 40  # $ per unit
+DEFAULT_OT_COST_PREMIUM = 20 # Extra $ per unit (Total $60)
+DEFAULT_OT_CAPACITY_PCT = 0.20 # 20% extra capacity
 
 
 # =============================================================================
@@ -279,11 +282,12 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         }
         
         # Zone Header
-        ws1.merge_cells(f'A{row}:H{row}')
+        ws1.merge_cells(f'A{row}:J{row}')
         cell = ws1.cell(row=row, column=1, value=f"═══ {zone.upper()} ZONE ═══")
         cell.font = zone_font
         cell.fill = zone_fills[zone]
         cell.alignment = Alignment(horizontal='center')
+        chart_anchor_row = row  # Anchor for charts
         row += 1
         
         # Zone Parameters
@@ -306,13 +310,15 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         
         # Production Schedule Headers
         calc_headers = ['Fortnight', 'Target', 'Overtime', 
-                        'Local Capacity', 'Material Cap', 'REAL OUTPUT', 'Shipment?']
+                        'Local Capacity', 'Max OT Pot.', 'Material Cap', 
+                        'REAL OUTPUT', 'Est. Unit Cost', 'Shipment?']
+        
         for col, h in enumerate(calc_headers, start=1):
             cell = ws1.cell(row=row, column=col, value=h)
             cell.font = header_font
             cell.fill = zone_fills[zone]
             cell.border = thin_border
-            cell.alignment = Alignment(horizontal='center')
+            cell.alignment = Alignment(horizontal='center', wrap_text=True)
         row += 1
         
         data_start = row
@@ -330,45 +336,148 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
             cell.fill = input_fill
             cell.alignment = Alignment(horizontal='center')
             
-            # Local Capacity = Machines × Rate
+            # Local Capacity (Nominal) = Machines × Rate
             cell = ws1.cell(row=row, column=4, value=f"=$B${params_end-3}*$B${params_end}")
             cell.border = thin_border
             cell.fill = calc_fill
             
+            # Max OT Capacity = Capacity * 0.20
+            cell = ws1.cell(row=row, column=5, value=f"=D{row}*{DEFAULT_OT_CAPACITY_PCT}")
+            cell.border = thin_border
+            cell.font = Font(color="666666", italic=True)
+            
             # Material Cap (simplified)
-            cell = ws1.cell(row=row, column=5, value=f"=$B${params_end-2}")
+            cell = ws1.cell(row=row, column=6, value=f"=$B${params_end-2}")
             cell.border = thin_border
             cell.fill = calc_fill
             
-            # REAL OUTPUT = MIN(Target, Capacity, Material)
-            cell = ws1.cell(row=row, column=6, value=f"=MIN(B{row},D{row},E{row})")
+            # REAL OUTPUT = MIN(Target, Nominal + (If OT, OT_Pot, 0), Material)
+            # Logic: IF OT="Y", Cap = D + E, else D.
+            ot_logic = f'IF(C{row}="Y", D{row}+E{row}, D{row})'
+            cell = ws1.cell(row=row, column=7, value=f"=MIN(B{row}, {ot_logic}, F{row})")
             cell.border = thin_border
             cell.fill = output_fill
             cell.font = Font(bold=True)
             
+            # Est Unit Cost
+            # If OT="Y", cost = 60, else 40.
+            cell = ws1.cell(row=row, column=8, value=f'=IF(C{row}="Y", {DEFAULT_VARIABLE_COST + DEFAULT_OT_COST_PREMIUM}, {DEFAULT_VARIABLE_COST})')
+            cell.border = thin_border
+            cell.number_format = '$#,##0'
+            
             # Shipment Alert
-            cell = ws1.cell(row=row, column=7, 
-                value=f'=IF(B{row}>E{row}, "SHIPMENT NEEDED!", "OK")')
+            cell = ws1.cell(row=row, column=9, 
+                value=f'=IF(B{row}>F{row}, "SHIPMENT NEEDED!", "OK")')
             cell.border = thin_border
             
             row += 1
-        
+            
         # Total row
         ws1.cell(row=row, column=1, value="TOTAL").font = Font(bold=True)
         cell = ws1.cell(row=row, column=2, value=f"=SUM(B{data_start}:B{row-1})")
         cell.fill = input_fill
-        cell = ws1.cell(row=row, column=6, value=f"=SUM(F{data_start}:F{row-1})")
+        cell = ws1.cell(row=row, column=7, value=f"=SUM(G{data_start}:G{row-1})")
         cell.fill = output_fill
         cell.font = Font(bold=True)
         
         zone_output_rows[zone] = {'total': row, 'data_start': data_start, 'data_end': row-1}
         
-        row += 3  # Space between zones
+        # ---------------------------------------------------------
+        # CHARTS
+        # ---------------------------------------------------------
+        
+        # 1. Capacity Constraint Stack (Combo)
+        # Bar: Nominal (D), OT Pot (E) - Stacked
+        # Line: Target (B)
+        
+        c1 = BarChart()
+        c1.type = "col"
+        c1.style = 10
+        c1.grouping = "stacked"
+        c1.overlap = 100
+        c1.title = f"{zone} Capacity Constraints"
+        c1.y_axis.title = "Units"
+        c1.x_axis.title = "Fortnight"
+        c1.height = 10
+        c1.width = 15
+        
+        # Data
+        data_nominal = Reference(ws1, min_col=4, min_row=data_start, max_row=data_start+7)
+        data_ot = Reference(ws1, min_col=5, min_row=data_start, max_row=data_start+7)
+        cats = Reference(ws1, min_col=1, min_row=data_start, max_row=data_start+7)
+        
+        s1 = Series(data_nominal, title="Nominal Cap")
+        s1.graphicalProperties.solidFill = "70AD47" # Green
+        c1.append(s1)
+        
+        s2 = Series(data_ot, title="OT Potential")
+        s2.graphicalProperties.solidFill = "ED7D31" # Orange
+        c1.append(s2)
+        c1.set_categories(cats)
+        
+        # Line Chart for Target
+        c2 = LineChart()
+        data_target = Reference(ws1, min_col=2, min_row=data_start, max_row=data_start+7)
+        s3 = Series(data_target, title="Target Demand")
+        s3.graphicalProperties.line.solidFill = "FF0000" # Red
+        s3.graphicalProperties.line.width = 30000 # Thick
+        c2.append(s3)
+        
+        c1 += c2 # Combine
+        ws1.add_chart(c1, f"K{chart_anchor_row}")
+        
+        # 2. Overtime Cost Cliff (Line)
+        # X: FN, Y: Unit Cost
+        c3 = LineChart()
+        c3.title = f"{zone} Unit Cost Analysis"
+        c3.y_axis.title = "Unit Cost ($)"
+        c3.style = 13
+        c3.height = 8
+        c3.width = 15
+        
+        data_cost = Reference(ws1, min_col=8, min_row=data_start, max_row=data_start+7)
+        s4 = Series(data_cost, title="Est. Unit Cost")
+        s4.graphicalProperties.line.solidFill = "2F5496" # Blue
+        c3.append(s4)
+        c3.set_categories(cats)
+        
+        ws1.add_chart(c3, f"K{chart_anchor_row + 21}")
+
+        # ---------------------------------------------------------
+        # CONDITIONAL FORMATTING
+        # ---------------------------------------------------------
+        
+        # Real Output < Target -> Red Fill (Bottleneck)
+        # Formula: G{row} < B{row}
+        # Note: In FormulaRule, openpyxl expects the formula relative to the top-left cell of the range.
+        red_fill_fmt = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        dxf = Font(color="9C0006") 
+        
+        range_string = f"G{data_start}:G{data_start+7}"
+        # Start cell is G{data_start}. Formula should be G{data_start} < B{data_start}
+        ws1.conditional_formatting.add(range_string, 
+            FormulaRule(formula=[f"G{data_start}<B{data_start}"], stopIfTrue=True, fill=red_fill_fmt))
+            
+        # Cost > 40 -> Red Text
+        range_string_cost = f"H{data_start}:H{data_start+7}"
+        red_text = Font(color="FF0000", bold=True)
+        # Start cell H{data_start}. Formula H{data_start} > 40
+        ws1.conditional_formatting.add(range_string_cost,
+             FormulaRule(formula=[f"H{data_start}>{DEFAULT_VARIABLE_COST}"], font=red_text))
+
+        
+        row += 20  # Space for next zone (charts take up space)
     
     # Column widths
-    ws1.column_dimensions['A'].width = 22
-    for col in range(2, 8):
-        ws1.column_dimensions[get_column_letter(col)].width = 14
+    ws1.column_dimensions['A'].width = 10
+    ws1.column_dimensions['B'].width = 12
+    ws1.column_dimensions['C'].width = 10 # OT
+    ws1.column_dimensions['D'].width = 14
+    ws1.column_dimensions['E'].width = 14
+    ws1.column_dimensions['F'].width = 14
+    ws1.column_dimensions['G'].width = 14
+    ws1.column_dimensions['H'].width = 14
+    ws1.column_dimensions['I'].width = 16
     
     # =========================================================================
     # TAB 2: RESOURCE_MGR
@@ -441,6 +550,8 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         cell.font = Font(color="FFFFFF")
         
         # Link to Zone Calculator total
+        # IMPORTANT: Updated logic as cols shifted
+        # Target was col 2. Real Output was col 6 (now 7).
         zone_total_row = zone_output_rows.get(zone, {}).get('total', 10)
         cell = ws2.cell(row=row, column=2, value=f"=ZONE_CALCULATORS!B{zone_total_row}")
         cell.border = thin_border
@@ -457,7 +568,7 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         
         # Recommendation
         cell = ws2.cell(row=row, column=5, 
-            value=f'=IF(D{row}>0, "Buy "&ROUNDUP(D{row}/{DEFAULT_NOMINAL_RATE},0)&" machines", "OK")')
+            value=f'=IF(B{row}>0, IF(D{row}>0, "Buy "&ROUNDUP(D{row}/{DEFAULT_NOMINAL_RATE},0)&" machines", "OK"), "No Target")')
         cell.border = thin_border
         cell.fill = output_fill
         
@@ -537,8 +648,10 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         ws3.cell(row=row, column=2, value="A").border = thin_border
         
         # Link to zone total output
+        # Updated: Real Output was Col 7 in Zone Calc
+        # Total Real Output is in Col 7
         zone_total = zone_output_rows.get(zone, {}).get('total', 10)
-        cell = ws3.cell(row=row, column=3, value=f"=ZONE_CALCULATORS!F{zone_total}")
+        cell = ws3.cell(row=row, column=3, value=f"=ZONE_CALCULATORS!G{zone_total}")
         cell.border = thin_border
         cell.fill = calc_fill
         
