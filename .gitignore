@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Excel temp files
+~$*.xlsx
+~$*.xls
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated Excel files (keep generators, commit generated files)
+# *.xlsx
+
+# Logs
+*.log
