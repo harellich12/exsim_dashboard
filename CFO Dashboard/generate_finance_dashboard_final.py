@@ -26,8 +26,8 @@ OUTPUT_FILE = "Finance_Dashboard_Final.xlsx"
 FORTNIGHTS = list(range(1, 9))  # 1-8
 
 # Default financial parameters
-DEFAULT_INTEREST_RATE = 0.08  # 8% annual
-DEFAULT_TAX_RATE = 0.30  # 30%
+DEFAULT_INTEREST_RATE = 0  # Was 0.08
+DEFAULT_TAX_RATE = 0  # Was 0.30
 
 
 # =============================================================================
@@ -70,8 +70,8 @@ def load_initial_cash_flow(filepath):
     df = load_excel_file(filepath)
     
     data = {
-        'final_cash': 500000,
-        'tax_payments': 50000
+        'final_cash': 0,
+        'tax_payments': 0
     }
     
     if df is None:
@@ -102,17 +102,17 @@ def load_balance_statements(filepath):
     df = load_excel_file(filepath)
     
     data = {
-        'net_sales': 1000000,
-        'cogs': 600000,
-        'gross_income': 400000,
-        'net_profit': 100000,
-        'total_assets': 2000000,
-        'total_liabilities': 800000,
-        'equity': 1200000,
-        'retained_earnings': 500000,
-        'depreciation': 50000,
-        'gross_margin_pct': 0.40,
-        'net_margin_pct': 0.10
+        'net_sales': 0,
+        'cogs': 0,
+        'gross_income': 0,
+        'net_profit': 0,
+        'total_assets': 0,
+        'total_liabilities': 0,
+        'equity': 0,
+        'retained_earnings': 0,
+        'depreciation': 0,
+        'gross_margin_pct': 0,
+        'net_margin_pct': 0
     }
     
     if df is None:
@@ -177,7 +177,7 @@ def load_sales_admin_expenses(filepath):
     """Load S&A expenses for overhead estimation."""
     df = load_excel_file(filepath)
     
-    data = {'total_sa_expenses': 150000}
+    data = {'total_sa_expenses': 0}
     
     if df is None:
         return data
@@ -200,14 +200,29 @@ def load_receivables_payables(filepath):
     df = load_excel_file(filepath)
     
     data = {
-        'receivables': [50000] * 8,
-        'payables': [30000] * 8
+        'receivables': [0] * 8,
+        'payables': [0] * 8
     }
     
     if df is None:
         return data
     
-    # Parse by fortnight if available
+    # Parse by fortnight from cash flow report if available
+    for idx, row in df.iterrows():
+        first_val = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ''
+        
+        # Receivables (Cash In)
+        if 'receipts' in first_val and 'customer' in first_val:
+            for i in range(8):
+                if i + 1 < len(row):
+                    data['receivables'][i] = parse_numeric(row.iloc[i+1])
+        
+        # Payables (Cash Out)
+        if 'payment' in first_val and 'supplier' in first_val:
+            for i in range(8):
+                if i + 1 < len(row):
+                    data['payables'][i] = abs(parse_numeric(row.iloc[i+1]))
+    
     return data
 
 
@@ -259,13 +274,13 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     ws1['A3'].font = section_font
     
     ws1.cell(row=5, column=1, value="Cash at End of Last Period").border = thin_border
-    cell = ws1.cell(row=5, column=2, value=cash_data.get('final_cash', 500000))
+    cell = ws1.cell(row=5, column=2, value=cash_data.get('final_cash', 0))
     cell.border = thin_border
     cell.fill = ref_fill
     cell.number_format = '$#,##0'
     
     ws1.cell(row=6, column=1, value="Less: Tax Payments").border = thin_border
-    cell = ws1.cell(row=6, column=2, value=cash_data.get('tax_payments', 50000))
+    cell = ws1.cell(row=6, column=2, value=cash_data.get('tax_payments', 0))
     cell.border = thin_border
     cell.fill = input_fill
     cell.number_format = '$#,##0'
@@ -341,7 +356,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # Procurement Spend
     ws1.cell(row=row, column=1, value="Procurement Spend (Est.)").border = thin_border
     for fn in FORTNIGHTS:
-        cell = ws1.cell(row=row, column=1+fn, value=50000)
+        cell = ws1.cell(row=row, column=1+fn, value=0)
         cell.border = thin_border
         cell.fill = input_fill
         cell.number_format = '$#,##0'
@@ -349,7 +364,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     row += 1
     
     # Fixed Overhead (S&A)
-    sa_per_fn = sa_data.get('total_sa_expenses', 150000) / 8
+    sa_per_fn = sa_data.get('total_sa_expenses', 0) / 8
     ws1.cell(row=row, column=1, value="Fixed Overhead (S&A)").border = thin_border
     for fn in FORTNIGHTS:
         cell = ws1.cell(row=row, column=1+fn, value=int(sa_per_fn))
@@ -484,13 +499,13 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     ws2['A3'].font = section_font
     
     ws2.cell(row=5, column=1, value="Historical Gross Margin %").border = thin_border
-    cell = ws2.cell(row=5, column=2, value=balance_data.get('gross_margin_pct', 0.40))
+    cell = ws2.cell(row=5, column=2, value=balance_data.get('gross_margin_pct', 0))
     cell.border = thin_border
     cell.fill = ref_fill
     cell.number_format = '0.0%'
     
     ws2.cell(row=6, column=1, value="Historical Net Margin %").border = thin_border
-    cell = ws2.cell(row=6, column=2, value=balance_data.get('net_margin_pct', 0.10))
+    cell = ws2.cell(row=6, column=2, value=balance_data.get('net_margin_pct', 0))
     cell.border = thin_border
     cell.fill = ref_fill
     cell.number_format = '0.0%'
@@ -510,10 +525,10 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     
     # Revenue
     ws2.cell(row=row, column=1, value="Net Sales / Revenue").border = thin_border
-    ws2.cell(row=row, column=2, value=balance_data.get('net_sales', 1000000)).border = thin_border
+    ws2.cell(row=row, column=2, value=balance_data.get('net_sales', 0)).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].number_format = '$#,##0'
-    cell = ws2.cell(row=row, column=3, value=balance_data.get('net_sales', 1000000))
+    cell = ws2.cell(row=row, column=3, value=balance_data.get('net_sales', 0))
     cell.border = thin_border
     cell.fill = input_fill
     cell.number_format = '$#,##0'
@@ -526,7 +541,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     
     # COGS
     ws2.cell(row=row, column=1, value="Cost of Goods Sold").border = thin_border
-    ws2.cell(row=row, column=2, value=balance_data.get('cogs', 600000)).border = thin_border
+    ws2.cell(row=row, column=2, value=balance_data.get('cogs', 0)).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].number_format = '$#,##0'
     cell = ws2.cell(row=row, column=3, value=f"=C{revenue_row}*(1-$B$5)")
@@ -542,7 +557,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     
     # Gross Margin
     ws2.cell(row=row, column=1, value="Gross Margin").border = thin_border
-    ws2.cell(row=row, column=2, value=balance_data.get('gross_income', 400000)).border = thin_border
+    ws2.cell(row=row, column=2, value=balance_data.get('gross_income', 0)).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].number_format = '$#,##0'
     cell = ws2.cell(row=row, column=3, value=f"=C{revenue_row}-C{cogs_row}")
@@ -558,10 +573,10 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     
     # S&A Expenses
     ws2.cell(row=row, column=1, value="S&A Expenses").border = thin_border
-    ws2.cell(row=row, column=2, value=sa_data.get('total_sa_expenses', 150000)).border = thin_border
+    ws2.cell(row=row, column=2, value=sa_data.get('total_sa_expenses', 0)).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].number_format = '$#,##0'
-    cell = ws2.cell(row=row, column=3, value=sa_data.get('total_sa_expenses', 150000))
+    cell = ws2.cell(row=row, column=3, value=sa_data.get('total_sa_expenses', 0))
     cell.border = thin_border
     cell.fill = input_fill
     cell.number_format = '$#,##0'
@@ -574,10 +589,10 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     
     # Depreciation
     ws2.cell(row=row, column=1, value="Depreciation").border = thin_border
-    ws2.cell(row=row, column=2, value=balance_data.get('depreciation', 50000)).border = thin_border
+    ws2.cell(row=row, column=2, value=balance_data.get('depreciation', 0)).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].number_format = '$#,##0'
-    cell = ws2.cell(row=row, column=3, value=balance_data.get('depreciation', 50000))
+    cell = ws2.cell(row=row, column=3, value=balance_data.get('depreciation', 0))
     cell.border = thin_border
     cell.fill = input_fill
     cell.number_format = '$#,##0'
@@ -590,10 +605,10 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     
     # Interest Expense
     ws2.cell(row=row, column=1, value="Interest Expense").border = thin_border
-    ws2.cell(row=row, column=2, value=20000).border = thin_border
+    ws2.cell(row=row, column=2, value=0).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].number_format = '$#,##0'
-    cell = ws2.cell(row=row, column=3, value=20000)
+    cell = ws2.cell(row=row, column=3, value=0)
     cell.border = thin_border
     cell.fill = input_fill
     cell.number_format = '$#,##0'
@@ -602,7 +617,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     
     # Net Income
     ws2.cell(row=row, column=1, value="EST. NET INCOME").font = Font(bold=True)
-    ws2.cell(row=row, column=2, value=balance_data.get('net_profit', 100000)).border = thin_border
+    ws2.cell(row=row, column=2, value=balance_data.get('net_profit', 0)).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].font = Font(bold=True)
     ws2['B' + str(row)].number_format = '$#,##0'
@@ -665,25 +680,25 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     ws3['A3'].font = section_font
     
     ws3.cell(row=5, column=1, value="Total Assets").border = thin_border
-    cell = ws3.cell(row=5, column=2, value=balance_data.get('total_assets', 2000000))
+    cell = ws3.cell(row=5, column=2, value=balance_data.get('total_assets', 0))
     cell.border = thin_border
     cell.fill = ref_fill
     cell.number_format = '$#,##0'
     
     ws3.cell(row=6, column=1, value="Total Liabilities").border = thin_border
-    cell = ws3.cell(row=6, column=2, value=balance_data.get('total_liabilities', 800000))
+    cell = ws3.cell(row=6, column=2, value=balance_data.get('total_liabilities', 0))
     cell.border = thin_border
     cell.fill = ref_fill
     cell.number_format = '$#,##0'
     
     ws3.cell(row=7, column=1, value="Total Equity").border = thin_border
-    cell = ws3.cell(row=7, column=2, value=balance_data.get('equity', 1200000))
+    cell = ws3.cell(row=7, column=2, value=balance_data.get('equity', 0))
     cell.border = thin_border
     cell.fill = ref_fill
     cell.number_format = '$#,##0'
     
     ws3.cell(row=8, column=1, value="Retained Earnings").border = thin_border
-    cell = ws3.cell(row=8, column=2, value=balance_data.get('retained_earnings', 500000))
+    cell = ws3.cell(row=8, column=2, value=balance_data.get('retained_earnings', 0))
     cell.border = thin_border
     cell.fill = ref_fill
     cell.number_format = '$#,##0'
@@ -782,7 +797,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
         cell.fill = input_fill
         cell.number_format = '$#,##0'
         
-        cell = ws4.cell(row=row, column=3, value=0.08)
+        cell = ws4.cell(row=row, column=3, value=0)
         cell.border = thin_border
         cell.fill = input_fill
         cell.number_format = '0.0%'

@@ -28,18 +28,18 @@ OUTPUT_FILE = "CPO_Dashboard.xlsx"
 ZONES = ["Center", "West", "North", "East", "South"]
 
 # Default parameters
-DEFAULT_HIRING_FEE = 3000  # $ per new hire
-DEFAULT_SEVERANCE = 5000  # $ per fired worker
-DEFAULT_BASE_SALARY = 750  # $ per fortnight per worker
-DEFAULT_INFLATION_RATE = 0.03  # 3%
+DEFAULT_HIRING_FEE = 0  # Was 3000
+DEFAULT_SEVERANCE = 0  # Was 5000
+DEFAULT_BASE_SALARY = 0  # Was 750
+DEFAULT_INFLATION_RATE = 0  # Was 0.03
 
 # Default benefits structure
 DEFAULT_BENEFITS = [
-    ("Training Budget (% of Payroll)", 0.02, "percent", "Low = More defects"),
-    ("Health Insurance (% of Payroll)", 0.05, "percent", "Reduces absenteeism"),
-    ("Profit Sharing (% of Net Profit)", 0.05, "percent", "Paid on net profit"),
-    ("Personal Days (per Worker)", 2, "number", "Labor requirement"),
-    ("Union Representatives", 3, "number", "Labor requirement"),
+    ("Training Budget (% of Payroll)", 0, "percent", "Low = More defects"),
+    ("Health Insurance (% of Payroll)", 0, "percent", "Reduces absenteeism"),
+    ("Profit Sharing (% of Net Profit)", 0, "percent", "Paid on net profit"),
+    ("Personal Days (per Worker)", 0, "number", "Labor requirement"),
+    ("Union Representatives", 0, "number", "Labor requirement"),
     ("Reduction in Working Hours (%)", 0, "percent", "Reduces capacity"),
     ("Off-Days for Workers", 0, "number", "Extra days off"),
 ]
@@ -84,8 +84,6 @@ def load_workers_balance(filepath):
     data = {zone: {'workers': 0, 'absenteeism': 0} for zone in ZONES}
     
     if df is None:
-        data['Center'] = {'workers': 219, 'absenteeism': 0}
-        data['West'] = {'workers': 71, 'absenteeism': 0}
         return data
     
     for idx, row in df.iterrows():
@@ -108,7 +106,7 @@ def load_sales_admin(filepath):
     """Load sales & admin data for salespeople info."""
     df = load_excel_file(filepath)
     
-    data = {'salespeople_count': 44, 'salespeople_salaries': 33000}
+    data = {'salespeople_count': 0, 'salespeople_salaries': 0}
     
     if df is None:
         return data
@@ -134,7 +132,7 @@ def load_labor_costs(filepath):
     """Load labor costs from production data."""
     df = load_excel_file(filepath)
     
-    data = {'total_labor': 64484}
+    data = {'total_labor': 0}
     
     if df is None:
         return data
@@ -147,7 +145,7 @@ def load_labor_costs(filepath):
             cost = parse_numeric(row.iloc[1]) if len(row) > 1 else 0
             total_labor += cost
     
-    data['total_labor'] = total_labor if total_labor > 0 else 64484
+    data['total_labor'] = total_labor
     return data
 
 
@@ -251,7 +249,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data):
         cell.border = thin_border
         
         # Est. Turnover %
-        cell = ws1.cell(row=zone_row, column=4, value=0.05)
+        cell = ws1.cell(row=zone_row, column=4, value=0)
         cell.fill = input_fill
         cell.border = thin_border
         cell.number_format = '0.0%'
@@ -342,7 +340,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data):
     
     ws2['A7'] = "Target Purchasing Power Increase %"
     cell = ws2['B7']
-    cell.value = 0.01
+    cell.value = 0
     cell.fill = input_fill
     cell.border = thin_border
     cell.number_format = '0.0%'
@@ -462,14 +460,14 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data):
     # Inputs
     ws3['A4'] = "INPUT: Estimated Net Profit (for Profit Sharing)"
     cell = ws3['B4']
-    cell.value = 100000
+    cell.value = 0
     cell.fill = input_fill
     cell.border = thin_border
     cell.number_format = '$#,##0'
     
     ws3['A5'] = "Previous Period Labor Cost"
     cell = ws3['B5']
-    cell.value = labor_data.get('total_labor', 64484)
+    cell.value = labor_data.get('total_labor', 0)
     cell.fill = ref_fill
     cell.border = thin_border
     cell.number_format = '$#,##0'
@@ -493,7 +491,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data):
         ("Health Insurance", f"=COMPENSATION_STRATEGY!B{benefits_start_row+1}*C10", True),
         ("Profit Sharing", f"=$B$4*COMPENSATION_STRATEGY!B{benefits_start_row+2}", True),
         ("Hiring & Firing Costs", f"=WORKFORCE_PLANNING!K{totals_row}", True),
-        ("Salesforce Payroll", sales_data.get('salespeople_salaries', 33000), True),
+        ("Salesforce Payroll", sales_data.get('salespeople_salaries', 0), True),
     ]
     
     row = 9

@@ -29,19 +29,21 @@ TRANSPORT_MODES = ["Train", "Truck", "Plane"]
 DEFAULT_MATERIAL = "Electroclean"
 
 # Default transport configuration
+# Default transport configuration
 DEFAULT_TRANSPORT = {
-    "Train": {"lead_time": 2, "cost": 5},
-    "Truck": {"lead_time": 1, "cost": 10},
-    "Plane": {"lead_time": 0, "cost": 25},
+    "Train": {"lead_time": 0, "cost": 0},
+    "Truck": {"lead_time": 0, "cost": 0},
+    "Plane": {"lead_time": 0, "cost": 0},
 }
 
 # Default warehouse configuration
+# Default warehouse configuration
 DEFAULT_WAREHOUSE = {
-    "Center": {"capacity": 4800, "cost_per_module": 50000, "capacity_per_module": 400},
-    "West": {"capacity": 2500, "cost_per_module": 50000, "capacity_per_module": 400},
-    "North": {"capacity": 2000, "cost_per_module": 50000, "capacity_per_module": 400},
-    "East": {"capacity": 0, "cost_per_module": 55000, "capacity_per_module": 400},
-    "South": {"capacity": 0, "cost_per_module": 55000, "capacity_per_module": 400},
+    "Center": {"capacity": 0, "cost_per_module": 0, "capacity_per_module": 0},
+    "West": {"capacity": 0, "cost_per_module": 0, "capacity_per_module": 0},
+    "North": {"capacity": 0, "cost_per_module": 0, "capacity_per_module": 0},
+    "East": {"capacity": 0, "cost_per_module": 0, "capacity_per_module": 0},
+    "South": {"capacity": 0, "cost_per_module": 0, "capacity_per_module": 0},
 }
 
 
@@ -86,9 +88,6 @@ def load_finished_goods_by_zone(filepath):
                    'inventory': 0} for zone in ZONES}
     
     if df is None:
-        data['Center']['inventory'] = 2685
-        data['West']['inventory'] = 1299
-        data['North']['inventory'] = 620
         return data
     
     current_zone_idx = 0
@@ -564,7 +563,7 @@ def main():
                 print(f"  [OK] {zone}: Inv={inv['inventory']:.0f}, Cap={inv['capacity']}")
     else:
         inventory_data = load_finished_goods_by_zone(None)
-        print("  [!] Using default inventory data")
+        print("  [!] File not found. Using 0 values.")
     
     # Template
     template_path = DATA_FOLDER / "Logistics Decisions.xlsx"
@@ -581,7 +580,7 @@ def main():
         print(f"  [OK] Loaded shipping costs")
     else:
         cost_data = load_shipping_costs(None)
-        print("  [!] Using default cost data")
+        print("  [!] File not found. Using 0 values.")
     
     print("\n[*] Generating Logistics Dashboard...")
     

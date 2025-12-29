@@ -30,26 +30,27 @@ PIECES = ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"]
 SUPPLIERS = ["Supplier A", "Supplier B", "Supplier C"]
 
 # Default supplier configuration (per ExSim template: 3 suppliers per part)
+# Default supplier configuration
 DEFAULT_SUPPLIERS = {
     "Part A": [
-        {"name": "Supplier A", "lead_time": 1, "cost": 15, "payment_terms": 2, "batch_size": 500},
-        {"name": "Supplier B", "lead_time": 2, "cost": 12, "payment_terms": 1, "batch_size": 1000},
-        {"name": "Supplier C", "lead_time": 3, "cost": 10, "payment_terms": 0, "batch_size": 2000},
+        {"name": "Supplier A", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier B", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier C", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
     ],
     "Part B": [
-        {"name": "Supplier A", "lead_time": 1, "cost": 10, "payment_terms": 2, "batch_size": 300},
-        {"name": "Supplier B", "lead_time": 2, "cost": 8, "payment_terms": 1, "batch_size": 600},
-        {"name": "Supplier C", "lead_time": 3, "cost": 6, "payment_terms": 0, "batch_size": 1200},
+        {"name": "Supplier A", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier B", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier C", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
     ]
 }
 
 DEFAULT_PIECES_CONFIG = {
-    "Piece 1": {"cost": 50, "batch_size": 50},
-    "Piece 2": {"cost": 45, "batch_size": 50},
-    "Piece 3": {"cost": 40, "batch_size": 100},
-    "Piece 4": {"cost": 35, "batch_size": 100},
-    "Piece 5": {"cost": 30, "batch_size": 100},
-    "Piece 6": {"cost": 25, "batch_size": 100},
+    "Piece 1": {"cost": 0, "batch_size": 0},
+    "Piece 2": {"cost": 0, "batch_size": 0},
+    "Piece 3": {"cost": 0, "batch_size": 0},
+    "Piece 4": {"cost": 0, "batch_size": 0},
+    "Piece 5": {"cost": 0, "batch_size": 0},
+    "Piece 6": {"cost": 0, "batch_size": 0},
 }
 
 
@@ -90,8 +91,8 @@ def load_raw_materials(filepath):
     df = load_excel_file(filepath)
     
     data = {
-        'parts': {part: {'final_inventory': 500} for part in PARTS},
-        'pieces': {piece: {'final_inventory': 100} for piece in PIECES}
+        'parts': {part: {'final_inventory': 0} for part in PARTS},
+        'pieces': {piece: {'final_inventory': 0} for piece in PIECES}
     }
     
     if df is None:
@@ -130,9 +131,9 @@ def load_production_costs(filepath):
     df = load_excel_file(filepath)
     
     data = {
-        'ordering_cost': 5000,
-        'holding_cost': 3000,
-        'consumption_cost': 50000
+        'ordering_cost': 0,
+        'holding_cost': 0,
+        'consumption_cost': 0
     }
     
     if df is None:
@@ -296,8 +297,8 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     ws2['A3'].font = section_font
     
     # Cost data
-    ordering_cost = cost_data.get('ordering_cost', 5000)
-    holding_cost = cost_data.get('holding_cost', 3000)
+    ordering_cost = cost_data.get('ordering_cost', 0)
+    holding_cost = cost_data.get('holding_cost', 0)
     total_cost = ordering_cost + holding_cost
     
     ws2.cell(row=5, column=1, value="Ordering Cost (Total)").border = thin_border
@@ -376,7 +377,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     # Target Production input row
     ws3.cell(row=6, column=1, value="Target Production").border = thin_border
     for fn in FORTNIGHTS:
-        cell = ws3.cell(row=6, column=1+fn, value=1000)
+        cell = ws3.cell(row=6, column=1+fn, value=0)
         cell.border = thin_border
         cell.fill = input_fill
     
@@ -391,7 +392,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
         ws3.cell(row=row, column=1, value=f"{part.upper()}").font = Font(bold=True, color="2F5496")
         row += 1
         
-        opening_inv = materials_data['parts'].get(part, {}).get('final_inventory', 500)
+        opening_inv = materials_data['parts'].get(part, {}).get('final_inventory', 0)
         
         # Gross Requirement
         ws3.cell(row=row, column=1, value="Gross Requirement").border = thin_border

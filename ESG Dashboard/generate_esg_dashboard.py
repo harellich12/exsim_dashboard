@@ -24,36 +24,37 @@ DATA_FOLDER = Path("data")
 OUTPUT_FILE = "ESG_Dashboard.xlsx"
 
 # Default initiative specifications
+# Default initiative specifications
 DEFAULT_INITIATIVES = {
     "Solar PV Panels": {
-        "unit_cost": 15000,  # $ per panel
-        "co2_reduction": 0.5,  # tons per panel per year
+        "unit_cost": 0,  # $ per panel
+        "co2_reduction": 0,  # tons per panel per year
         "unit": "panels",
         "capex": True
     },
     "Trees Planted": {
-        "unit_cost": 50,  # $ per tree
-        "co2_reduction": 0.02,  # tons per tree per year
+        "unit_cost": 0,  # $ per tree
+        "co2_reduction": 0,  # tons per tree per year
         "unit": "trees",
         "capex": True
     },
     "Green Electricity": {
-        "unit_cost": 0.03,  # $ premium per kWh
-        "co2_reduction": 0.0005,  # tons per kWh converted
+        "unit_cost": 0,  # $ premium per kWh
+        "co2_reduction": 0,  # tons per kWh converted
         "unit": "% of consumption",
         "capex": False
     },
     "CO2 Credits": {
-        "unit_cost": 25,  # $ per credit (1 credit = 1 ton)
-        "co2_reduction": 1,  # 1 ton per credit
+        "unit_cost": 0,  # $ per credit (1 credit = 1 ton)
+        "co2_reduction": 0,  # 1 ton per credit
         "unit": "credits",
         "capex": False
     }
 }
 
-DEFAULT_CO2_TAX_RATE = 30  # $ per ton
-DEFAULT_EMISSIONS = 150  # tons per year
-DEFAULT_ENERGY_CONSUMPTION = 500000  # kWh per year
+DEFAULT_CO2_TAX_RATE = 0  # Was 30
+DEFAULT_EMISSIONS = 0  # Was 150
+DEFAULT_ENERGY_CONSUMPTION = 0  # Was 500000
 
 
 # =============================================================================
@@ -91,9 +92,9 @@ def load_esg_report(filepath):
     df = load_excel_file(filepath)
     
     data = {
-        'emissions': DEFAULT_EMISSIONS,
-        'tax_paid': DEFAULT_EMISSIONS * DEFAULT_CO2_TAX_RATE,
-        'energy_consumption': DEFAULT_ENERGY_CONSUMPTION
+        'emissions': 0,
+        'tax_paid': 0,
+        'energy_consumption': 0
     }
     
     if df is None:
@@ -127,7 +128,7 @@ def load_production_data(filepath):
         first_val = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ''
         
         if 'production' in first_val and 'total' in first_val:
-            data['total_production'] = parse_numeric(row.iloc[1]) if len(row) > 1 else 50000
+            data['total_production'] = parse_numeric(row.iloc[1]) if len(row) > 1 else 0
     
     return data
 
@@ -303,10 +304,10 @@ def create_esg_dashboard(esg_data, production_data):
         # Quantity (input)
         if name == "Green Electricity":
             # Percentage input for green electricity
-            cell = ws2.cell(row=row, column=2, value=0.5)  # 50%
+            cell = ws2.cell(row=row, column=2, value=0)  # 0%
             cell.number_format = '0%'
         else:
-            cell = ws2.cell(row=row, column=2, value=10)
+            cell = ws2.cell(row=row, column=2, value=0)
         cell.fill = input_fill
         cell.border = thin_border
         

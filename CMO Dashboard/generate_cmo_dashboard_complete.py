@@ -30,12 +30,12 @@ MY_COMPANY = "Company 3"
 ZONES = ["Center", "West", "North", "East", "South"]
 SEGMENTS = ["High", "Low"]
 
-# Defaults
-DEFAULT_PRICE = 100
-DEFAULT_AWARENESS = 50
-DEFAULT_ATTRACTIVENESS = 50
-DEFAULT_COGS = 40
-DEFAULT_SALESPEOPLE_SALARY = 5000
+# Defaults - set to 0 to ensure data comes only from Excel files
+DEFAULT_PRICE = 0
+DEFAULT_AWARENESS = 0
+DEFAULT_ATTRACTIVENESS = 0
+DEFAULT_COGS = 0
+DEFAULT_SALESPEOPLE_SALARY = 0
 
 
 # =============================================================================
@@ -71,24 +71,24 @@ def load_excel_file(filepath, sheet_name=None):
 # =============================================================================
 
 def load_market_report(filepath):
-    """Load market report with segment-level data."""
+    """Load market report with segment-level data from website export format."""
     df = load_excel_file(filepath)
     
     data = {
         'by_segment': {seg: {zone: {
-            'my_market_share': 25,
-            'my_awareness': DEFAULT_AWARENESS,
-            'my_attractiveness': DEFAULT_ATTRACTIVENESS,
-            'my_price': DEFAULT_PRICE,
-            'comp_avg_awareness': DEFAULT_AWARENESS,
-            'comp_avg_price': DEFAULT_PRICE
+            'my_market_share': 0,
+            'my_awareness': 0,
+            'my_attractiveness': 0,
+            'my_price': 0,
+            'comp_avg_awareness': 0,
+            'comp_avg_price': 0
         } for zone in ZONES} for seg in SEGMENTS},
         'zones': {zone: {
-            'my_price': DEFAULT_PRICE,
-            'comp_avg_price': DEFAULT_PRICE,
-            'my_awareness': DEFAULT_AWARENESS,
-            'my_attractiveness': DEFAULT_ATTRACTIVENESS,
-            'my_market_share': 25
+            'my_price': 0,
+            'comp_avg_price': 0,
+            'my_awareness': 0,
+            'my_attractiveness': 0,
+            'my_market_share': 0
         } for zone in ZONES}
     }
     
@@ -96,79 +96,113 @@ def load_market_report(filepath):
         return data
     
     current_section = None
-    current_zone = None
-    current_segment = None
+    my_company_col = None  # Column index for MY_COMPANY
+    comp_cols = []  # Column indices for competitors
     
     for idx, row in df.iterrows():
         first_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
         second_val = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ''
         
-        # Detect sections
+        # Detect section headers
         if 'market share' in first_val.lower() and 'segment' in first_val.lower():
             current_section = 'segment_share'
+            my_company_col = None
         elif 'market share' in first_val.lower() and 'region' in first_val.lower():
             current_section = 'region_share'
+            my_company_col = None
         elif 'awareness' in first_val.lower() and 'segment' in first_val.lower():
             current_section = 'segment_awareness'
-        elif 'awareness' in first_val.lower():
-            current_section = 'awareness'
+            my_company_col = None
         elif 'attractiveness' in first_val.lower():
             current_section = 'attractiveness'
+            my_company_col = None
         elif 'price' in first_val.lower() and 'zone' not in first_val.lower():
             current_section = 'price'
+            my_company_col = None
         
-        # Zone detection
+        # Detect column headers with company names
+        if first_val.lower() == 'zone' and my_company_col is None:
+            comp_cols = []
+            for col_idx in range(len(row)):
+                col_val = str(row.iloc[col_idx]).strip() if pd.notna(row.iloc[col_idx]) else ''
+                # Find Company 3 column (matches "Company 3 A" or "Company 3")
+                if 'Company 3' in col_val or MY_COMPANY in col_val:
+                    my_company_col = col_idx
+                elif 'Company' in col_val and 'Company 3' not in col_val:
+                    comp_cols.append(col_idx)
+        
+        # Parse zone data rows
+        current_zone = None
+        current_segment = None
+        
         for zone in ZONES:
             if first_val.lower() == zone.lower():
                 current_zone = zone
-                
-                # Check for segment in second column
-                if second_val.lower() in ['high', 'low']:
-                    current_segment = second_val.capitalize()
-                else:
-                    current_segment = None
-                
-                # Extract data based on section
-                if current_section == 'segment_share' and current_segment:
-                    for col_idx in range(2, min(6, len(row))):
-                        val = parse_numeric(row.iloc[col_idx])
-                        if val > 0:
-                            data['by_segment'][current_segment][zone]['my_market_share'] = val
-                            break
-                            
-                elif current_section == 'region_share':
-                    for col_idx in range(1, min(6, len(row))):
-                        val = parse_numeric(row.iloc[col_idx])
-                        if val > 0:
-                            data['zones'][zone]['my_market_share'] = val
-                            break
-                            
-                elif current_section == 'price':
-                    prices = []
-                    for col_idx in range(1, min(6, len(row))):
-                        val = parse_numeric(row.iloc[col_idx])
-                        if val > 0:
-                            prices.append(val)
-                    if prices:
-                        data['zones'][zone]['my_price'] = prices[0]
-                        if len(prices) > 1:
-                            data['zones'][zone]['comp_avg_price'] = sum(prices[1:]) / len(prices[1:])
-                        # Copy to segment data
-                        for seg in SEGMENTS:
-                            data['by_segment'][seg][zone]['my_price'] = prices[0]
-                            if len(prices) > 1:
-                                data['by_segment'][seg][zone]['comp_avg_price'] = sum(prices[1:]) / len(prices[1:])
                 break
         
-        # Segment rows (continuation)
-        if second_val.lower() in ['high', 'low'] and current_zone:
+        # Also check continuation rows (zone is blank, segment in second column)
+        if first_val == '' and second_val.lower() in ['high', 'low']:
             current_segment = second_val.capitalize()
-            if current_section == 'segment_share':
-                for col_idx in range(2, min(6, len(row))):
-                    val = parse_numeric(row.iloc[col_idx])
-                    if val > 0:
-                        data['by_segment'][current_segment][current_zone]['my_market_share'] = val
-                        break
+        elif current_zone and second_val.lower() in ['high', 'low']:
+            current_segment = second_val.capitalize()
+        
+        if (current_zone or (first_val == '' and second_val.lower() in ['high', 'low'])) and my_company_col:
+            try:
+                my_val = parse_numeric(row.iloc[my_company_col])
+                
+                # Get competitor average
+                comp_vals = [parse_numeric(row.iloc[c]) for c in comp_cols if c < len(row)]
+                comp_vals = [v for v in comp_vals if v > 0]
+                comp_avg = sum(comp_vals) / len(comp_vals) if comp_vals else 0
+                
+                # Determine which zone to use for continuation rows
+                if current_zone:
+                    zone_to_use = current_zone
+                else:
+                    # Find last zone from previous rows
+                    zone_to_use = None
+                    for prev_idx in range(idx-1, -1, -1):
+                        prev_first = str(df.iloc[prev_idx, 0]).strip() if pd.notna(df.iloc[prev_idx, 0]) else ''
+                        for z in ZONES:
+                            if prev_first.lower() == z.lower():
+                                zone_to_use = z
+                                break
+                        if zone_to_use:
+                            break
+                
+                if zone_to_use is None:
+                    continue
+                
+                # Store data based on section
+                if current_section == 'region_share' and my_val > 0:
+                    data['zones'][zone_to_use]['my_market_share'] = my_val
+                    
+                elif current_section == 'segment_share' and current_segment and my_val > 0:
+                    data['by_segment'][current_segment][zone_to_use]['my_market_share'] = my_val
+                    
+                elif current_section == 'price' and my_val > 0:
+                    data['zones'][zone_to_use]['my_price'] = my_val
+                    if comp_avg > 0:
+                        data['zones'][zone_to_use]['comp_avg_price'] = comp_avg
+                    for seg in SEGMENTS:
+                        data['by_segment'][seg][zone_to_use]['my_price'] = my_val
+                        if comp_avg > 0:
+                            data['by_segment'][seg][zone_to_use]['comp_avg_price'] = comp_avg
+                            
+                elif current_section == 'segment_awareness' and current_segment and my_val > 0:
+                    data['zones'][zone_to_use]['my_awareness'] = my_val
+                    if comp_avg > 0:
+                        data['zones'][zone_to_use]['comp_avg_awareness'] = comp_avg
+                    data['by_segment'][current_segment][zone_to_use]['my_awareness'] = my_val
+                    if comp_avg > 0:
+                        data['by_segment'][current_segment][zone_to_use]['comp_avg_awareness'] = comp_avg
+                        
+                elif current_section == 'attractiveness' and current_segment and my_val > 0:
+                    data['zones'][zone_to_use]['my_attractiveness'] = my_val
+                    data['by_segment'][current_segment][zone_to_use]['my_attractiveness'] = my_val
+                    
+            except Exception as e:
+                continue
     
     return data
 
@@ -206,13 +240,13 @@ def load_marketing_template(filepath):
     
     template = {
         'df': df,
-        'tv_budget': 35,
-        'brand_focus': 50,
-        'radio_budgets': {zone: 100 for zone in ZONES},
+        'tv_budget': 0,
+        'brand_focus': 0,
+        'radio_budgets': {zone: 0 for zone in ZONES},
         'demand': {zone: 0 for zone in ZONES},
-        'prices': {zone: 68 for zone in ZONES},
-        'payment_terms': {zone: 'B' for zone in ZONES},
-        'salespeople': {zone: 10 for zone in ZONES}
+        'prices': {zone: 0 for zone in ZONES},
+        'payment_terms': {zone: '' for zone in ZONES},
+        'salespeople': {zone: 0 for zone in ZONES}
     }
     
     if df is not None:
@@ -240,56 +274,103 @@ def load_marketing_template(filepath):
 
 
 def load_sales_data(filepath):
-    """Load sales and expenses data."""
+    """Load sales and expenses data from website export format."""
     df = load_excel_file(filepath)
     
     data = {
-        'by_zone': {zone: {'units': 1000, 'price': DEFAULT_PRICE} for zone in ZONES},
+        'by_zone': {zone: {'units': 0, 'price': DEFAULT_PRICE} for zone in ZONES},
         'totals': {'units': 0, 'tv_spend': 0, 'radio_spend': 0, 'salespeople_cost': 0}
     }
     
     if df is None:
         return data
     
-    current_zone = None
+    in_sales_section = False
+    in_expense_section = False
     
     for idx, row in df.iterrows():
         first_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
         
-        for zone in ZONES:
-            if zone.lower() == first_val.lower():
-                current_zone = zone
-                break
+        # Detect sections
+        if 'sales' in first_val.lower() and 'expense' not in first_val.lower() and 'admin' not in first_val.lower():
+            in_sales_section = True
+            in_expense_section = False
+            continue
+        elif 'expense' in first_val.lower() or 'admin' in first_val.lower():
+            in_sales_section = False
+            in_expense_section = True
+            continue
         
-        if 'units' in first_val.lower() and current_zone:
-            for col_idx in range(1, min(12, len(row))):
-                val = parse_numeric(row.iloc[col_idx])
-                if val > 0:
-                    data['by_zone'][current_zone]['units'] = val
-                    data['totals']['units'] += val
+        # Parse sales data rows (Region, Brand, Units, Local Price, ...)
+        if in_sales_section:
+            for zone in ZONES:
+                if first_val.lower() == zone.lower():
+                    # Format: Region, Brand, Units, Local Price, Gross Sales, Discount %, Net Sales
+                    units = parse_numeric(row.iloc[2]) if len(row) > 2 else 0
+                    price = parse_numeric(row.iloc[3]) if len(row) > 3 else DEFAULT_PRICE
+                    
+                    if units > 0:
+                        data['by_zone'][zone]['units'] = units
+                        data['totals']['units'] += units
+                    if price > 0:
+                        data['by_zone'][zone]['price'] = price
                     break
+        
+        # Parse expense data rows
+        if in_expense_section:
+            expense = parse_numeric(row.iloc[2]) if len(row) > 2 else 0
+            if 'tv' in first_val.lower() and 'advert' in first_val.lower():
+                data['totals']['tv_spend'] = expense
+            elif 'radio' in first_val.lower() and 'advert' in first_val.lower():
+                data['totals']['radio_spend'] = expense
+            elif 'salespeople' in first_val.lower() and 'salar' in first_val.lower():
+                data['totals']['salespeople_cost'] = expense
     
     return data
 
 
 def load_inventory_data(filepath):
-    """Load inventory to detect stockouts."""
+    """Load inventory to detect stockouts from website export format."""
     df = load_excel_file(filepath)
     
-    data = {'final_inventory': 500, 'is_stockout': False}
+    data = {
+        'final_inventory': 0, 
+        'is_stockout': False,
+        'by_zone': {zone: {'final': 0, 'capacity': 0} for zone in ZONES}
+    }
     
     if df is None:
         return data
     
+    current_zone_idx = 0
+    zone_order = ['Center', 'West', 'North', 'East', 'South']
+    
     for idx, row in df.iterrows():
         first_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
         
+        # Detect capacity header (start of new zone)
+        if first_val.startswith('Capacity:'):
+            # Extract capacity number
+            capacity = parse_numeric(first_val.replace('Capacity:', ''))
+            if current_zone_idx < len(zone_order):
+                zone = zone_order[current_zone_idx]
+                data['by_zone'][zone]['capacity'] = capacity
+        
+        # Parse final inventory row
         if 'final' in first_val.lower() and 'inventory' in first_val.lower():
-            # Get fortnight 8 value
-            final_val = parse_numeric(row.iloc[8]) if len(row) > 8 else 0
-            data['final_inventory'] = final_val
-            data['is_stockout'] = final_val <= 0
-            break
+            # Get fortnight 8 value (column 9, 0-indexed = column 9)
+            final_val = parse_numeric(row.iloc[9]) if len(row) > 9 else 0
+            
+            if current_zone_idx < len(zone_order):
+                zone = zone_order[current_zone_idx]
+                data['by_zone'][zone]['final'] = final_val
+            
+            # Add to total
+            data['final_inventory'] += final_val
+            if final_val <= 0:
+                data['is_stockout'] = True
+            
+            current_zone_idx += 1
     
     return data
 
@@ -350,7 +431,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             zone_seg = market_data['by_segment'][segment].get(zone, {})
             zone_data = market_data['zones'].get(zone, {})
             
-            market_share = zone_seg.get('my_market_share', 25)
+            market_share = zone_seg.get('my_market_share', 0)
             my_awareness = zone_data.get('my_awareness', DEFAULT_AWARENESS)
             comp_awareness = zone_seg.get('comp_avg_awareness', DEFAULT_AWARENESS)
             awareness_gap = my_awareness - comp_awareness
@@ -634,7 +715,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     innov_cost_cell = f'C{row}'
     
     # =========================================================================
-    # TAB 3: STRATEGY_COCKPIT
+    # TAB 3:    _COCKPIT
     # =========================================================================
     ws3 = wb.create_sheet("STRATEGY_COCKPIT")
     
