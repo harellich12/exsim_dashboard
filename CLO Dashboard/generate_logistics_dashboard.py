@@ -167,12 +167,93 @@ def load_shipping_costs(filepath):
     return data
 
 
+def load_logistics_intelligence(filepath):
+    """
+    Extract Historical Intelligence from logistics.xlsx:
+    - Cost benchmarks per route (Train Center-North, etc.)
+    - Warehouse penalties by zone
+    """
+    result = {
+        'benchmarks': {},  # route -> cost per unit
+        'penalties': {}    # zone -> warehouse cost
+    }
+    
+    if filepath is None or not filepath.exists():
+        return result
+    
+    try:
+        df = pd.read_excel(filepath, header=None)
+        
+        # Find Transportation Costs table
+        in_transport_section = False
+        for idx, row in df.iterrows():
+            label = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            
+            if "Transportation Costs" in label:
+                in_transport_section = True
+                continue
+            
+            if in_transport_section:
+                # Look for header row with "Type", "Units", "Cost", "Total"
+                if "Type" in label:
+                    continue
+                
+                # Check for actual route rows (not Subtotal, not Total)
+                if label and "Subtotal" not in label and "Total" != label:
+                    route = label
+                    units = parse_numeric(row.iloc[1]) if len(row) > 1 else 0
+                    total = parse_numeric(row.iloc[3]) if len(row) > 3 else 0
+                    
+                    if units > 0:
+                        cost_per_unit = total / units
+                        # Aggregate by route name (may have duplicates)
+                        if route in result['benchmarks']:
+                            # Average the costs
+                            existing = result['benchmarks'][route]
+                            result['benchmarks'][route] = (existing + cost_per_unit) / 2
+                        else:
+                            result['benchmarks'][route] = round(cost_per_unit, 2)
+                
+                # Exit when we hit Total or empty row after data
+                if label == "Total" or (label == "" and len(result['benchmarks']) > 0):
+                    in_transport_section = False
+        
+        # Find Incoming and Outcoming by Zone table
+        for idx, row in df.iterrows():
+            label = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            
+            if "Incoming and Outcoming by Zone" in label:
+                # Next row is header: Zone, Received Units, In transit, Sent Units, Shipping Costs, Warehouse Costs
+                # Then data rows
+                for offset in range(2, 10):
+                    if idx + offset < len(df):
+                        data_row = df.iloc[idx + offset]
+                        zone = str(data_row.iloc[0]).strip() if pd.notna(data_row.iloc[0]) else ""
+                        
+                        if zone in ["Center", "West", "North", "East", "South"]:
+                            # Warehouse costs in column 5 (index 5)
+                            warehouse_cost = parse_numeric(data_row.iloc[5]) if len(data_row) > 5 else 0
+                            result['penalties'][zone] = warehouse_cost
+                        elif zone == "Total":
+                            break
+                break
+        
+    except Exception as e:
+        print(f"  [!] Error in load_logistics_intelligence: {e}")
+    
+    return result
+
+
 # =============================================================================
 # EXCEL GENERATION
 # =============================================================================
 
-def create_logistics_dashboard(inventory_data, template_data, cost_data):
-    """Create the Logistics Dashboard."""
+def create_logistics_dashboard(inventory_data, template_data, cost_data, intelligence_data=None):
+    """Create the Logistics Dashboard with Historical Intelligence."""
+    
+    # Handle missing intelligence data
+    if intelligence_data is None:
+        intelligence_data = {'benchmarks': {}, 'penalties': {}}
     
     wb = Workbook()
     
@@ -296,7 +377,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
     
     ws2['A1'] = "INVENTORY TETRIS - Zone-by-Zone Balance"
     ws2['A1'].font = title_font
-    ws2['A2'] = "Balance inventory using shipments. Watch for STOCKOUT (red) and OVERFLOW (purple) flags."
+    ws2['A2'] = "Balance inventory. Watch: 🔴STOCKOUT (red), 🟡WARNING >90% (yellow), 🟣OVERFLOW (purple)."
     ws2['A2'].font = Font(italic=True, color="666666")
     
     row = 4
@@ -306,12 +387,21 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
         opening_inv = zone_inv.get('inventory', 0)
         capacity = zone_inv.get('capacity', DEFAULT_WAREHOUSE[zone]['capacity'])
         
-        # Zone Header
+        # Get warehouse penalty from intelligence
+        zone_penalty = intelligence_data.get('penalties', {}).get(zone, 0)
+        
+        # Zone Header with penalty display
         ws2.merge_cells(f'A{row}:H{row}')
         cell = ws2.cell(row=row, column=1, value=f"═══ {zone.upper()} ZONE (Capacity: {capacity:,}) ═══")
         cell.font = zone_font
         cell.fill = zone_fills[zone]
         cell.alignment = Alignment(horizontal='center')
+        
+        # Show warehouse penalty if > 0
+        if zone_penalty > 0:
+            penalty_cell = ws2.cell(row=row, column=9, value=f"Last Period Rent: ${zone_penalty:,.0f}")
+            penalty_cell.font = Font(bold=True, color="C00000")  # Bold red
+        
         chart_anchor_row = row 
         row += 1
         
@@ -387,9 +477,9 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
             cell.border = thin_border
             cell.fill = ref_fill
             
-            # Flag
+            # Flag - now includes 90% warning
             cell = ws2.cell(row=row, column=8, 
-                value=f'=IF(F{row}<0,"STOCKOUT: SHIP HERE!",IF(F{row}>G{row},"OVERFLOW: RENT!","OK"))')
+                value=f'=IF(F{row}<0,"🔴 STOCKOUT!",IF(F{row}>G{row},"🟣 OVERFLOW!",IF(F{row}>G{row}*0.9,"🟡 WARNING: >90%","✓ OK")))')
             cell.border = thin_border
             
             row += 1
@@ -489,17 +579,25 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
             FormulaRule(formula=[f'F{data_start}<0'], fill=red_fill)
         )
         
-        # Purple: > Capacity (Overflow)
+        # Purple: > Capacity (Overflow - Critical)
         # Formula: F > G
         ws2.conditional_formatting.add(
             f'F{data_start}:F{data_end}',
             FormulaRule(formula=[f'F{data_start}>G{data_start}'], fill=purple_fill)
         )
         
-        # Green: 0 <= F <= G (Optimal)
+        # Yellow/Orange: > 90% Capacity (Warning Zone)
+        # Formula: F > G*0.9 AND F <= G
+        warning_fill = PatternFill(start_color="FFCC00", end_color="FFCC00", fill_type="solid")
         ws2.conditional_formatting.add(
             f'F{data_start}:F{data_end}',
-            FormulaRule(formula=[f'AND(F{data_start}>=0, F{data_start}<=G{data_start})'], fill=green_fill)
+            FormulaRule(formula=[f'AND(F{data_start}>G{data_start}*0.9, F{data_start}<=G{data_start})'], fill=warning_fill)
+        )
+        
+        # Green: 0 <= F <= 90% Capacity (Optimal)
+        ws2.conditional_formatting.add(
+            f'F{data_start}:F{data_end}',
+            FormulaRule(formula=[f'AND(F{data_start}>=0, F{data_start}<=G{data_start}*0.9)'], fill=green_fill)
         )
         
         row += 2
@@ -578,6 +676,57 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data):
     ws3.column_dimensions['A'].width = 12
     for col in range(2, 11):
         ws3.column_dimensions[get_column_letter(col)].width = 12
+    
+    # === HISTORICAL COST BENCHMARKS TABLE (Columns M:N) ===
+    bench_col = 13  # Column M
+    ws3.cell(row=4, column=bench_col, value="HISTORICAL COST BENCHMARKS").font = section_font
+    ws3.merge_cells(f'{get_column_letter(bench_col)}4:{get_column_letter(bench_col+1)}4')
+    
+    # Headers
+    ws3.cell(row=5, column=bench_col, value="Route").font = header_font
+    ws3.cell(row=5, column=bench_col).fill = header_fill
+    ws3.cell(row=5, column=bench_col).border = thin_border
+    ws3.cell(row=5, column=bench_col+1, value="Benchmark $/Unit").font = header_font
+    ws3.cell(row=5, column=bench_col+1).fill = header_fill
+    ws3.cell(row=5, column=bench_col+1).border = thin_border
+    
+    # Data rows from intelligence
+    bench_row = 6
+    benchmarks = intelligence_data.get('benchmarks', {})
+    if benchmarks:
+        for route, cost in benchmarks.items():
+            ws3.cell(row=bench_row, column=bench_col, value=route).border = thin_border
+            ws3.cell(row=bench_row, column=bench_col).fill = ref_fill  # Gray = read-only
+            cell = ws3.cell(row=bench_row, column=bench_col+1, value=cost)
+            cell.border = thin_border
+            cell.fill = ref_fill  # Gray = read-only
+            cell.number_format = '$#,##0.00'
+            bench_row += 1
+    else:
+        # No benchmark data available
+        ws3.cell(row=bench_row, column=bench_col, value="(No historical data)").font = Font(italic=True, color="666666")
+    
+    # Column widths for benchmark table
+    ws3.column_dimensions[get_column_letter(bench_col)].width = 25
+    ws3.column_dimensions[get_column_letter(bench_col+1)].width = 16
+    
+    # === PRICE GOUGING ALERT (Conditional Formatting) ===
+    # If Cost/Unit > 1.2x the first benchmark (simplified approach)
+    # Warning: Turn red if estimated cost is >20% higher than average historical cost
+    if benchmarks:
+        avg_benchmark = sum(benchmarks.values()) / len(benchmarks) if benchmarks else 0
+        gouging_threshold = avg_benchmark * 1.2
+        
+        # Add conditional format to the Cost/Unit column (F) for all 20 shipment rows
+        gouging_rule = FormulaRule(
+            formula=[f'F6>{gouging_threshold}'],
+            fill=PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"),
+            font=Font(color="9C0006", bold=True)
+        )
+        ws3.conditional_formatting.add('F6:F25', gouging_rule)
+        
+        # Add note about the alert
+        ws3.cell(row=27, column=1, value=f"⚠️ Red cells = Cost >20% above avg benchmark (${avg_benchmark:.2f} avg)").font = Font(italic=True, color="9C0006")
     
     # =========================================================================
     # TAB 4: UPLOAD_READY_LOGISTICS
@@ -671,14 +820,33 @@ def main():
     cost_path = get_data_path("shipping_costs.xlsx")
     cost_data = load_shipping_costs(cost_path) if cost_path else {'total_shipping_cost': 0}
     
+    # === NEW: LOGISTICS INTELLIGENCE ===
+    print("\n[*] Loading Historical Intelligence...")
+    intel_path = get_data_path("logistics.xlsx")
+    if intel_path:
+        intel_data = load_logistics_intelligence(intel_path)
+        if intel_data['benchmarks']:
+            print(f"  [INTEL] Cost Benchmarks: {len(intel_data['benchmarks'])} routes loaded")
+            for route, cost in intel_data['benchmarks'].items():
+                print(f"         {route}: ${cost:.2f}/unit")
+        if intel_data['penalties']:
+            total_pen = sum(intel_data['penalties'].values())
+            print(f"  [INTEL] Warehouse Penalties: ${total_pen:,.0f} total")
+            for zone, penalty in intel_data['penalties'].items():
+                if penalty > 0:
+                    print(f"         {zone}: ${penalty:,.0f}")
+    else:
+        intel_data = {'benchmarks': {}, 'penalties': {}}
+        print("  [!] No logistics.xlsx found - intelligence disabled")
+    
     print("\n[*] Creating dashboard...")
     
-    create_logistics_dashboard(inv_data, template_data, cost_data)
+    create_logistics_dashboard(inv_data, template_data, cost_data, intel_data)
     
     print("\nSheets created:")
     print("  * ROUTE_CONFIG (Transport Modes & Costs)")
     print("  * INVENTORY_TETRIS (Zone Balancing & Stockout Checks)")
-    print("  * SHIPMENT_BUILDER (Transfer Planning)")
+    print("  * SHIPMENT_BUILDER (Transfer Planning + Cost Benchmarks)")
     print("  * UPLOAD_READY_LOGISTICS (ExSim Format)")
 
 
