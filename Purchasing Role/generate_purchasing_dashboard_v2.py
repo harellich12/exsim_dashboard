@@ -21,7 +21,28 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'raw_materials.xlsx',
+    'production.xlsx',
+    'Procurement Decisions.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "Purchasing_Dashboard.xlsx"
 
 FORTNIGHTS = list(range(1, 9))  # 1-8
@@ -755,19 +776,21 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Raw Materials
-    materials_path = DATA_FOLDER / "raw_materials.xlsx"
-    if materials_path.exists():
+    materials_path = get_data_path("raw_materials.xlsx")
+    if materials_path:
         materials_data = load_raw_materials(materials_path)
-        print(f"  [OK] Loaded raw materials inventory")
+        print(f"  [OK] Loaded raw materials from {materials_path.parent.name}/")
     else:
         materials_data = load_raw_materials(None)
         print("  [!] Using default inventory data")
     
     # Production Costs
-    costs_path = DATA_FOLDER / "production.xlsx"
-    if costs_path.exists():
+    costs_path = get_data_path("production.xlsx")
+    if costs_path:
         cost_data = load_production_costs(costs_path)
         print(f"  [OK] Loaded production costs")
     else:
@@ -775,15 +798,15 @@ def main():
         print("  [!] Using default cost data")
     
     # Procurement Template
-    template_path = DATA_FOLDER / "Procurement Decisions.xlsx"
-    if template_path.exists():
+    template_path = get_data_path("Procurement Decisions.xlsx")
+    if template_path:
         template_data = load_procurement_template(template_path)
         print(f"  [OK] Loaded procurement template")
     else:
         template_data = load_procurement_template(None)
         print("  [!] Using default template layout")
     
-    print("\n[*] Generating Purchasing Dashboard...")
+    print("\n[*] Creating dashboard...")
     
     create_purchasing_dashboard(materials_data, cost_data, template_data)
     

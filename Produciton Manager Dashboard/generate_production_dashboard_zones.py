@@ -21,7 +21,30 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'raw_materials.xlsx',
+    'finished_goods_inventory.xlsx',
+    'workers_balance_overtime.xlsx',
+    'machine_spaces.xlsx',
+    'Production Decisions.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "Production_Dashboard_Zones.xlsx"
 
 FORTNIGHTS = list(range(1, 9))  # 1-8
@@ -743,20 +766,21 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading zone-specific data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Raw Materials by Zone
-    materials_path = DATA_FOLDER / "raw_materials.xlsx"
-    if materials_path.exists():
+    materials_path = get_data_path("raw_materials.xlsx")
+    if materials_path:
         materials_data = load_raw_materials_by_zone(materials_path)
-        zones_with_materials = [z for z in ZONES if materials_data[z]['part_a'] > 0]
-        print(f"  [OK] Loaded materials for zones: {zones_with_materials if zones_with_materials else 'Using defaults'}")
+        print(f"  [OK] Loaded materials from {materials_path.parent.name}/")
     else:
         materials_data = load_raw_materials_by_zone(None)
         print("  [!] Using default materials data")
     
     # Finished Goods by Zone
-    fg_path = DATA_FOLDER / "finished_goods_inventory.xlsx"
-    if fg_path.exists():
+    fg_path = get_data_path("finished_goods_inventory.xlsx")
+    if fg_path:
         fg_data = load_finished_goods_by_zone(fg_path)
         print(f"  [OK] Loaded finished goods by zone")
     else:
@@ -764,36 +788,32 @@ def main():
         print("  [!] Using default FG data")
     
     # Workers by Zone
-    workers_path = DATA_FOLDER / "workers_balance_overtime.xlsx"
-    if workers_path.exists():
+    workers_path = get_data_path("workers_balance_overtime.xlsx")
+    if workers_path:
         workers_data = load_workers_by_zone(workers_path)
-        for zone in ZONES:
-            if workers_data[zone]['workers'] > 0:
-                print(f"  [OK] {zone}: {workers_data[zone]['workers']:.0f} workers")
+        print(f"  [OK] Loaded workers by zone")
     else:
         workers_data = load_workers_by_zone(None)
         print("  [!] Using default workers data")
     
     # Machines by Zone
-    machines_path = DATA_FOLDER / "machine_spaces.xlsx"
-    if machines_path.exists():
+    machines_path = get_data_path("machine_spaces.xlsx")
+    if machines_path:
         machines_data = load_machines_by_zone(machines_path)
-        for zone in ZONES:
-            if machines_data[zone]['machines'] > 0:
-                print(f"  [OK] {zone}: {machines_data[zone]['machines']} machines, {machines_data[zone]['modules']} module slots")
+        print(f"  [OK] Loaded machines by zone")
     else:
         machines_data = load_machines_by_zone(None)
         print("  [!] Using default machines data")
     
     # Template
-    template_path = DATA_FOLDER / "Production Decisions.xlsx"
+    template_path = get_data_path("Production Decisions.xlsx")
     template_data = load_production_template(template_path)
     if template_data['exists']:
         print(f"  [OK] Loaded production template")
     else:
         print("  [!] Using default template layout")
     
-    print("\n[*] Generating Zone-Specific Dashboard...")
+    print("\n[*] Creating dashboard...")
     
     create_zones_dashboard(materials_data, fg_data, workers_data,
                            machines_data, template_data)

@@ -21,7 +21,28 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'finished_goods_inventory.xlsx',
+    'Logistics Decisions.xlsx',
+    'shipping_costs.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "Logistics_Dashboard.xlsx"
 
 FORTNIGHTS = list(range(1, 9))  # 1-8
@@ -626,18 +647,20 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Finished Goods Inventory
-    inv_path = DATA_FOLDER / "finished_goods_inventory.xlsx"
-    if inv_path.exists():
+    inv_path = get_data_path("finished_goods_inventory.xlsx")
+    if inv_path:
         inv_data = load_finished_goods_by_zone(inv_path)
-        print(f"  [OK] Loaded finished goods inventory")
+        print(f"  [OK] Loaded finished goods from {inv_path.parent.name}/")
     else:
         inv_data = load_finished_goods_by_zone(None)
         print("  [!] Using default inventory data")
     
     # Template
-    template_path = DATA_FOLDER / "Logistics Decisions.xlsx"
+    template_path = get_data_path("Logistics Decisions.xlsx")
     template_data = load_logistics_template(template_path)
     if template_data['exists']:
         print(f"  [OK] Loaded logistics template")
@@ -645,10 +668,10 @@ def main():
         print("  [!] Using default template layout")
     
     # Shipping Costs
-    cost_path = DATA_FOLDER / "shipping_costs.xlsx"
-    cost_data = load_shipping_costs(cost_path) if cost_path.exists() else {'total_shipping_cost': 0}
+    cost_path = get_data_path("shipping_costs.xlsx")
+    cost_data = load_shipping_costs(cost_path) if cost_path else {'total_shipping_cost': 0}
     
-    print("\n[*] Generating Logistics Dashboard...")
+    print("\n[*] Creating dashboard...")
     
     create_logistics_dashboard(inv_data, template_data, cost_data)
     

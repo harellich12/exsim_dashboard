@@ -21,7 +21,28 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'esg_report.xlsx',
+    'production.xlsx',
+    'ESG Decision.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "ESG_Dashboard.xlsx"
 
 # Default initiative specifications
@@ -514,26 +535,28 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # ESG Report
-    esg_path = DATA_FOLDER / "esg_report.xlsx"
-    if esg_path.exists():
+    esg_path = get_data_path("esg_report.xlsx")
+    if esg_path:
         esg_data = load_esg_report(esg_path)
-        print(f"  [OK] Loaded ESG annual report")
+        print(f"  [OK] Loaded ESG report from {esg_path.parent.name}/")
     else:
         esg_data = load_esg_report(None)
         print("  [!] Using default ESG data")
         
     # Production Data
-    prod_path = DATA_FOLDER / "production.xlsx"
-    if prod_path.exists():
+    prod_path = get_data_path("production.xlsx")
+    if prod_path:
         prod_data = load_production_data(prod_path)
-        print(f"  [OK] Loaded Production scale data")
+        print(f"  [OK] Loaded Production data")
     else:
         prod_data = load_production_data(None)
         print("  [!] Using default Production data")
     
-    print("\n[*] Generating ESG Dashboard...")
+    print("\n[*] Creating dashboard...")
     
     create_esg_dashboard(esg_data, prod_data)
     

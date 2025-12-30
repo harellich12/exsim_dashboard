@@ -21,7 +21,30 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'initial_cash_flow.xlsx',
+    'results_and_balance_statements.xlsx',
+    'sales_admin_expenses.xlsx',
+    'accounts_receivable_payable.xlsx',
+    'Finance Decisions.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "Finance_Dashboard_Final.xlsx"
 
 FORTNIGHTS = list(range(1, 9))  # 1-8
@@ -996,37 +1019,39 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Initial Cash Flow
-    cash_path = DATA_FOLDER / "initial_cash_flow.xlsx"
-    if cash_path.exists():
+    cash_path = get_data_path("initial_cash_flow.xlsx")
+    if cash_path:
         cash_data = load_initial_cash_flow(cash_path)
-        print(f"  [OK] Loaded initial cash: ${cash_data['final_cash']:,.0f}")
+        print(f"  [OK] Loaded initial cash from {cash_path.parent.name}/")
     else:
         cash_data = load_initial_cash_flow(None)
         print("  [!] Using default cash data")
     
     # Balance Statements
-    balance_path = DATA_FOLDER / "results_and_balance_statements.xlsx"
-    if balance_path.exists():
+    balance_path = get_data_path("results_and_balance_statements.xlsx")
+    if balance_path:
         balance_data = load_balance_statements(balance_path)
-        print(f"  [OK] Loaded balance: Assets=${balance_data['total_assets']:,.0f}")
+        print(f"  [OK] Loaded balance data")
     else:
         balance_data = load_balance_statements(None)
         print("  [!] Using default balance data")
     
     # S&A Expenses
-    sa_path = DATA_FOLDER / "sales_admin_expenses.xlsx"
-    if sa_path.exists():
+    sa_path = get_data_path("sales_admin_expenses.xlsx")
+    if sa_path:
         sa_data = load_sales_admin_expenses(sa_path)
-        print(f"  [OK] Loaded S&A expenses: ${sa_data['total_sa_expenses']:,.0f}")
+        print(f"  [OK] Loaded S&A expenses")
     else:
         sa_data = load_sales_admin_expenses(None)
         print("  [!] Using default S&A data")
     
     # Receivables/Payables
-    ar_ap_path = DATA_FOLDER / "accounts_receivable_payable.xlsx"
-    if ar_ap_path.exists():
+    ar_ap_path = get_data_path("accounts_receivable_payable.xlsx")
+    if ar_ap_path:
         ar_ap_data = load_receivables_payables(ar_ap_path)
         print(f"  [OK] Loaded AR/AP data")
     else:
@@ -1034,7 +1059,7 @@ def main():
         print("  [!] Using default AR/AP data")
     
     # Template
-    template_path = DATA_FOLDER / "Finance Decisions.xlsx"
+    template_path = get_data_path("Finance Decisions.xlsx")
     template_data = load_finance_template(template_path)
     if template_data['exists']:
         print(f"  [OK] Loaded finance template")

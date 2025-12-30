@@ -22,7 +22,28 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'workers_balance_overtime.xlsx',
+    'production.xlsx',
+    'sales_admin_expenses.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "CPO_Dashboard.xlsx"
 
 ZONES = ["Center", "West", "North", "East", "South"]
@@ -674,19 +695,21 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Workers Balance
-    workers_path = DATA_FOLDER / "workers_balance_overtime.xlsx"
-    if workers_path.exists():
+    workers_path = get_data_path("workers_balance_overtime.xlsx")
+    if workers_path:
         workers_data = load_workers_balance(workers_path)
-        print(f"  [OK] Loaded workers balance")
+        print(f"  [OK] Loaded workers balance from {workers_path.parent.name}/")
     else:
         workers_data = load_workers_balance(None)
         print("  [!] Using default workers data")
         
     # Sales & Admin
-    sales_path = DATA_FOLDER / "sales_admin.xlsx"
-    if sales_path.exists():
+    sales_path = get_data_path("sales_admin_expenses.xlsx")
+    if sales_path:
         sales_data = load_sales_admin(sales_path)
         print(f"  [OK] Loaded sales admin data")
     else:
@@ -694,18 +717,17 @@ def main():
         print("  [!] Using default sales admin data")
     
     # Labor Costs
-    labor_path = DATA_FOLDER / "production.xlsx"
-    if labor_path.exists():
+    labor_path = get_data_path("production.xlsx")
+    if labor_path:
         labor_data = load_labor_costs(labor_path)
-        print(f"  [OK] Loaded labor cost history")
+        print(f"  [OK] Loaded labor costs")
     else:
         labor_data = load_labor_costs(None)
         print("  [!] Using default labor cost data")
     
-    print("\n[*] Generating CPO Dashboard...")
-    
+    print("\n[*] Creating dashboard...")
     create_cpo_dashboard(workers_data, sales_data, labor_data)
-    
+
     print("\nSheets created:")
     print("  * WORKFORCE_PLANNING (Headcount & Hiring Impact)")
     print("  * COMPENSATION_STRATEGY (Salaries, Strikes, Benefits)")

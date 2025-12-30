@@ -23,7 +23,28 @@ warnings.filterwarnings('ignore')
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'market-report.xlsx',
+    'finished_goods_inventory.xlsx',
+    'sales_admin_expenses.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "CMO_Dashboard_Complete.xlsx"
 MY_COMPANY = "Company 3"
 
@@ -962,19 +983,21 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Market Report
-    market_path = DATA_FOLDER / "market-report.xlsx"
-    if market_path.exists():
+    market_path = get_data_path("market-report.xlsx")
+    if market_path:
         market_data = load_market_report(market_path)
-        print(f"  [OK] Loaded market report with segment data")
+        print(f"  [OK] Loaded market report from {market_path.parent.name}/")
     else:
         market_data = load_market_report(None)
         print("  [!] Using default market data")
     
     # Innovation Template
-    innov_path = DATA_FOLDER / "Marketing Innovation Decisions.xlsx"
-    if innov_path.exists():
+    innov_path = get_data_path("Marketing Innovation Decisions.xlsx")
+    if innov_path:
         innovation_features = load_innovation_template(innov_path)
         print(f"  [OK] Loaded {len(innovation_features)} innovation features")
     else:
@@ -982,8 +1005,8 @@ def main():
         print("  [!] Using default innovation features")
     
     # Marketing Template
-    mkt_path = DATA_FOLDER / "Marketing Decisions.xlsx"
-    if mkt_path.exists():
+    mkt_path = get_data_path("Marketing Decisions.xlsx")
+    if mkt_path:
         marketing_template = load_marketing_template(mkt_path)
         print(f"  [OK] Loaded marketing template")
     else:
@@ -991,8 +1014,8 @@ def main():
         print("  [!] Using default marketing template")
     
     # Sales Data
-    sales_path = DATA_FOLDER / "sales_admin_expenses.xlsx"
-    if sales_path.exists():
+    sales_path = get_data_path("sales_admin_expenses.xlsx")
+    if sales_path:
         sales_data = load_sales_data(sales_path)
         print(f"  [OK] Loaded sales data")
     else:
@@ -1000,8 +1023,8 @@ def main():
         print("  [!] Using default sales data")
     
     # Inventory
-    inv_path = DATA_FOLDER / "finished_goods_inventory.xlsx"
-    if inv_path.exists():
+    inv_path = get_data_path("finished_goods_inventory.xlsx")
+    if inv_path:
         inventory_data = load_inventory_data(inv_path)
         stockout_status = "STOCKOUT DETECTED" if inventory_data['is_stockout'] else "OK"
         print(f"  [OK] Loaded inventory: {stockout_status}")
