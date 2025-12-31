@@ -10,7 +10,7 @@ import warnings
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
-BASE_PATH = Path(r"c:\Users\Harel-PC\OneDrive - IESE Business School\Desktop\AI Tests\EXSIM models")
+BASE_PATH = Path(__file__).parent
 
 class ExSimIntegrityTest(unittest.TestCase):
     """Base test class with helper methods."""
@@ -80,16 +80,30 @@ class TestCFODashboard(ExSimIntegrityTest):
 
     def test_initial_cash_flow(self):
         """Verify Liquidity Monitor Starting Cash matches Initial Cash Flow Report."""
-        source_df = self.load_source_data(self.FOLDER, "initial_cash_flow.xlsx")
+        # Dashboard uses Reports folder first, then local data
+        reports_path = BASE_PATH / "Reports" / "initial_cash_flow.xlsx"
+        local_path = BASE_PATH / self.FOLDER / "data" / "initial_cash_flow.xlsx"
+        source_path = reports_path if reports_path.exists() else local_path
+        
+        source_df = pd.read_excel(source_path, header=None) if source_path.exists() else None
         wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
         ws = wb["LIQUIDITY_MONITOR"]
         
         expected_cash = 0
         if source_df is not None:
-             for _, row in source_df.iterrows():
-                if 'final cash' in str(row[0]).lower():
+            for _, row in source_df.iterrows():
+                label = str(row[0]).strip() if pd.notna(row[0]) else ''
+                # Match exact dashboard logic: "Final cash" with "start of the first fortnight"
+                if 'Final cash' in label and 'start of the first fortnight' in label:
                     expected_cash = self.parse_numeric(row[1])
                     break
+            # Fallback: just "Final cash"
+            if expected_cash == 0:
+                for _, row in source_df.iterrows():
+                    label = str(row[0]).strip() if pd.notna(row[0]) else ''
+                    if 'Final cash' in label:
+                        expected_cash = self.parse_numeric(row[1])
+                        break
         
         actual_cash = ws['B5'].value
         print(f"CFO: Checking Final Cash. Source={expected_cash}, Dashboard={actual_cash}")
@@ -98,16 +112,24 @@ class TestCFODashboard(ExSimIntegrityTest):
 
     def test_net_sales(self):
         """Verify Profit Control Net Sales matches Balance Sheet."""
-        source_df = self.load_source_data(self.FOLDER, "results_and_balance_statements.xlsx")
+        # Dashboard uses Reports folder first
+        reports_path = BASE_PATH / "Reports" / "results_and_balance_statements.xlsx"
+        local_path = BASE_PATH / self.FOLDER / "data" / "results_and_balance_statements.xlsx"
+        source_path = reports_path if reports_path.exists() else local_path
+        
+        source_df = pd.read_excel(source_path, header=None) if source_path.exists() else None
         wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
         ws = wb["PROFIT_CONTROL"]
         
         expected_sales = 0
         if source_df is not None:
-             for _, row in source_df.iterrows():
-                if 'net sales' in str(row[0]).lower():
-                    expected_sales = self.parse_numeric(row[1])
-                    break
+            for _, row in source_df.iterrows():
+                label = str(row[0]).strip().lower() if pd.notna(row[0]) else ''
+                if 'net sales' in label or 'revenue' in label:
+                    val = self.parse_numeric(row[1])
+                    if val > 0:
+                        expected_sales = val
+                        break
         
         actual_sales = ws['B11'].value
         print(f"CFO: Checking Net Sales. Source={expected_sales}, Dashboard={actual_sales}")

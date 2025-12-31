@@ -4,25 +4,32 @@ A comprehensive collection of decision-support dashboards for the ExSim business
 
 ## 📊 Dashboard Overview
 
-### 1. CMO Dashboard (Market Allocation & Strategy)
+### 1. [CMO Dashboard](CMO%20Dashboard/README.md) (Market Allocation & Strategy)
+
 **Function:** Calculates "True Demand" (adjusting for previous stockouts), optimizes the 4Ps for High/Low segments, and manages Innovation/R&D to ensure the market allocation engine chooses you.
 
-### 2. Production Dashboard (Capacity & Cost Optimization)
+### 2. [Production Dashboard](Produciton%20Manager%20Dashboard/README.md) (Capacity & Cost Optimization)
+
 **Function:** Converts the Marketing forecast into a feasible build plan per Zone, assigns machines/workers to specific sections, and calculates the "Real Unit Cost" to flag unprofitable overtime.
 
-### 3. Purchasing Dashboard (MRP & Sourcing)
+### 3. [Purchasing Dashboard](Purchasing%20Role/README.md) (MRP & Sourcing)
+
 **Function:** Translates the Production plan into specific supplier orders, managing "Time Travel" (Lead Times) and optimizing Batch Sizes (EOQ) to minimize ordering and holding costs.
 
-### 4. Logistics Dashboard (Supply Network Optimization)
+### 4. [Logistics Dashboard](CLO%20Dashboard/README.md) (Supply Network Optimization)
+
 **Function:** Plays "Inventory Tetris" by scheduling shipments between Zones to balance supply with local demand, preventing stockouts and minimizing expensive warehouse overflow.
 
-### 5. CPO Dashboard (Workforce Planning & Compensation)
+### 5. [CPO Dashboard](CPO%20Dashboard/README.md) (Workforce Planning & Compensation)
+
 **Function:** Calculates hiring needs based on turnover/production targets and optimizes Salary/Benefit levels to prevent strikes (Inflation matching) while tracking total payroll cash flow.
 
-### 6. ESG Dashboard (CO2 Abatement Strategy)
+### 6. [ESG Dashboard](ESG%20Dashboard/README.md) (CO2 Abatement Strategy)
+
 **Function:** Performs a financial Cost-Benefit Analysis to decide if it is cheaper to invest in Green Tech (Solar/Credits) or simply pay the CO2 Tax.
 
-### 7. CFO Dashboard (Financial Control & Liquidity)
+### 7. [CFO Dashboard](CFO%20Dashboard/README.md) (Financial Control & Liquidity)
+
 **Function:** Aggregates all spending plans to forecast solvency (Cash Flow), audits profitability (Income Statement), and manages Debt/Equity ratios to maintain credit ratings.
 
 ---
@@ -30,11 +37,13 @@ A comprehensive collection of decision-support dashboards for the ExSim business
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 ```bash
 pip install pandas openpyxl
 ```
 
 ### Generate All Dashboards
+
 ```bash
 # Generate each dashboard
 python "CFO Dashboard/generate_finance_dashboard_final.py"
@@ -46,6 +55,7 @@ python "ESG Dashboard/generate_esg_dashboard.py"
 ```
 
 ### Run Validation Tests
+
 ```bash
 # Run structural validation (27 tests)
 python validate_dashboards.py

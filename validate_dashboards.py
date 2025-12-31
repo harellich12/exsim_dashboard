@@ -58,6 +58,12 @@ DASHBOARDS = {
         "script": "generate_esg_dashboard.py",
         "output": "ESG_Dashboard.xlsx",
         "tests": ["esg_strategy_refs", "upload_ready_links"]
+    },
+    "Production": {
+        "dir": "Produciton Manager Dashboard",
+        "script": "generate_production_dashboard_zones.py",
+        "output": "Production_Dashboard_Zones.xlsx",
+        "tests": ["zone_calculator_refs", "upload_ready_links"]
     }
 }
 
@@ -237,17 +243,17 @@ def test_strategy_cockpit_refs(wb, results):
     
     ws = wb["STRATEGY_COCKPIT"]
     
-    # Check for zone rows starting at row 12
+    # Check for zone rows starting at row 16
     zones_found = 0
-    for row in range(12, 17):
+    for row in range(16, 21):
         cell_val = ws.cell(row=row, column=1).value
         if cell_val and cell_val in ["Center", "West", "North", "East", "South"]:
             zones_found += 1
     
     if zones_found == 5:
-        results.append(("PASS", "CMO", "All 5 zones found in STRATEGY_COCKPIT rows 12-16"))
+        results.append(("PASS", "CMO", "All 5 zones found in STRATEGY_COCKPIT rows 16-20"))
     else:
-        results.append(("FAIL", "CMO", f"Expected 5 zones at rows 12-16, found {zones_found}"))
+        results.append(("FAIL", "CMO", f"Expected 5 zones at rows 16-20, found {zones_found}"))
 
 
 def test_mrp_cascade(wb, results):

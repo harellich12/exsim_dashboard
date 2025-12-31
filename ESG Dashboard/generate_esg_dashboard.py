@@ -15,6 +15,15 @@ from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule, CellIsRule, ColorScaleRule
 from openpyxl.chart import BarChart, LineChart, Reference, Series
 import warnings
+import sys
+
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from case_parameters import ESG as ESG_PARAMS
+except ImportError:
+    print("Warning: Could not import case_parameters.py. Using defaults.")
+    ESG_PARAMS = {}
 
 warnings.filterwarnings('ignore')
 
@@ -30,7 +39,9 @@ REQUIRED_FILES = [
 ]
 
 # Data source: Primary = Reports folder at project root, Fallback = local /data
-REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
+import os
+REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
 LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
 
 def get_data_path(filename):
@@ -523,7 +534,97 @@ def create_esg_dashboard(esg_data, production_data):
     ws2.column_dimensions['A'].width = 30
     for col in range(2, 9):
         ws2.column_dimensions[get_column_letter(col)].width = 15
+    
+    # Section D: Strategy Alignment Tracker
+    ws2['A25'] = "SECTION D: STRATEGY ALIGNMENT"
+    ws2['A25'].font = section_font
+    
+    strategy = ESG_PARAMS.get('STRATEGY', {})
+    
+    align_headers = ['Target', 'Goal', 'Current', 'Status']
+    for col, h in enumerate(align_headers, start=1):
+        cell = ws2.cell(row=26, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = thin_border
+    
+    # Carbon Neutral Year
+    ws2.cell(row=27, column=1, value="Carbon Neutral Year").border = thin_border
+    ws2.cell(row=27, column=2, value=strategy.get('CARBON_NEUTRAL_YEAR', 2030)).border = thin_border
+    ws2.cell(row=27, column=3, value="TBD").fill = input_fill
+    ws2.cell(row=27, column=3).border = thin_border
+    ws2.cell(row=27, column=4, value='=IF(C27="TBD", "PENDING", IF(C27<=B27, "ON TRACK", "BEHIND"))').border = thin_border
+    
+    # Recyclability Target
+    ws2.cell(row=28, column=1, value="Product Recyclability %").border = thin_border
+    ws2.cell(row=28, column=2, value=strategy.get('RECYCLABILITY_TARGET', 1.0)).number_format = '0%'
+    ws2.cell(row=28, column=2).border = thin_border
+    ws2.cell(row=28, column=3, value=0).fill = input_fill
+    ws2.cell(row=28, column=3).number_format = '0%'
+    ws2.cell(row=28, column=3).border = thin_border
+    ws2.cell(row=28, column=4, value=f'=IF(C28>=B28, "COMPLIANT", "GAP: "&TEXT(B28-C28,"0%"))').border = thin_border
+    
+    # Fair Wage Multiplier
+    fair_mult = strategy.get('FAIR_WAGE_MULTIPLIER', 1.1)
+    ws2.cell(row=29, column=1, value="Fair Wage (vs Market)").border = thin_border
+    ws2.cell(row=29, column=2, value=fair_mult).number_format = '0.0x'
+    ws2.cell(row=29, column=2).border = thin_border
+    ws2.cell(row=29, column=3, value=1.0).fill = input_fill # Default = 1x (market rate)
+    ws2.cell(row=29, column=3).number_format = '0.0x'
+    ws2.cell(row=29, column=3).border = thin_border
+    ws2.cell(row=29, column=4, value=f'=IF(C29>=B29, "COMPLIANT", "RAISE WAGES")').border = thin_border
+    
+    # Conditional Formatting for Status
+    ws2.conditional_formatting.add('D27:D29',
+        FormulaRule(formula=['OR(D27="ON TRACK", D27="COMPLIANT")'], fill=output_fill))
+    ws2.conditional_formatting.add('D27:D29',
+        FormulaRule(formula=['OR(LEFT(D27,3)="GAP", D27="BEHIND", D27="RAISE WAGES")'], fill=warning_fill))
         
+        
+    # =========================================================================
+    # TAB 3: UPLOAD_READY_ESG
+    # =========================================================================
+    ws3 = wb.create_sheet("UPLOAD_READY_ESG")
+    
+    ws3['A1'] = "UPLOAD READY DATA - DO NOT EDIT"
+    ws3['A1'].font = Font(bold=True, color="FF0000")
+    
+    headers = ['Initiative', 'Quantity', 'Investment', 'CO2 Reduction', 'Tax Savings']
+    for col, h in enumerate(headers, start=1):
+        cell = ws3.cell(row=5, column=col, value=h)
+        cell.font = Font(bold=True)
+        cell.border = thin_border
+    
+    # Link to STRATEGY_SELECTOR
+    # Initiatives start at row 13 in STRATEGY_SELECTOR
+    source_start_row = 13
+    
+    for idx, name in enumerate(initiatives):
+        row = 6 + idx
+        source_row = source_start_row + idx
+        
+        # Name
+        ws3.cell(row=row, column=1, value=name)
+        
+        # Quantity -> Link to Col B
+        ws3.cell(row=row, column=2, value=f"=STRATEGY_SELECTOR!B{source_row}")
+        
+        # Investment -> Link to Col C
+        ws3.cell(row=row, column=3, value=f"=STRATEGY_SELECTOR!C{source_row}")
+        
+        # CO2 Reduction -> Link to Col D
+        ws3.cell(row=row, column=4, value=f"=STRATEGY_SELECTOR!D{source_row}")
+        
+        # Tax Savings -> Link to Col E
+        ws3.cell(row=row, column=5, value=f"=STRATEGY_SELECTOR!E{source_row}")
+
+    # Column widths
+    ws3.column_dimensions['A'].width = 20
+    ws3.column_dimensions['B'].width = 15
+    ws3.column_dimensions['C'].width = 15
+    ws3.column_dimensions['D'].width = 15
+    ws3.column_dimensions['E'].width = 15
+
     # Save
     wb.save(OUTPUT_FILE)
     print(f"[SUCCESS] Created '{OUTPUT_FILE}'")

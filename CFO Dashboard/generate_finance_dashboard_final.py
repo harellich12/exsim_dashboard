@@ -15,6 +15,15 @@ from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.chart import LineChart, BarChart, Reference, Series
 import warnings
+import sys
+
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from case_parameters import FINANCIAL
+except ImportError:
+    print("Warning: Could not import case_parameters.py. Using defaults.")
+    FINANCIAL = {}
 
 warnings.filterwarnings('ignore')
 
@@ -32,7 +41,9 @@ REQUIRED_FILES = [
 ]
 
 # Data source: Primary = Reports folder at project root, Fallback = local /data
-REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
+import os
+REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
 LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
 
 def get_data_path(filename):
@@ -50,8 +61,11 @@ OUTPUT_FILE = "Finance_Dashboard_Final.xlsx"
 FORTNIGHTS = list(range(1, 9))  # 1-8
 
 # Default financial parameters
-DEFAULT_INTEREST_RATE = 0  # Was 0.08
-DEFAULT_TAX_RATE = 0  # Was 0.30
+DEF_LOANS = FINANCIAL.get('LOANS', {})
+ST_LIMIT = DEF_LOANS.get('SHORT_TERM', {}).get('LIMIT', 500000)
+LT_LIMIT = DEF_LOANS.get('LONG_TERM', {}).get('LIMIT', 2000000)
+DEFAULT_INTEREST_RATE = DEF_LOANS.get('SHORT_TERM', {}).get('INTEREST_RATE_ANNUAL', 0.08)
+DEFAULT_TAX_RATE = FINANCIAL.get('TAX_RATE', 0.25)
 
 
 # =============================================================================
@@ -501,12 +515,14 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     row += 1
     
     # Opening Cash
-    # Note: We need ending_cash_row which is defined later, so we pre-calculate it
-    # Layout from open_cash_row (15):
+    # The offset calculation needs to account for ALL rows between open_cash_row and ending_cash_row.
+    # After adding Debt Capacity rows, the offset has increased.
+    # Layout from open_cash_row:
     #   +1 Sales, +2 Procurement, +3 S&A, +4 Receivables, +5 Payables
-    #   +6 gap, +7 Section C header, +8 Credit, +9 Invest, +10 Mortgage, +11 Dividends
-    #   +12 gap, +13 Section D header, +14 Net Flow, +15 Ending Cash
-    ending_cash_offset = 15  # open_cash_row + 15 = ending_cash_row
+    #   +6 gap, +7 gap (extra), +8 Section C header, +9 Credit, +10 ST Debt Balance
+    #   +11 Investments, +12 Mortgage, +13 Dividends, +14 gap
+    #   +15 Section D header, +16 Net Flow, +17 Ending Cash
+    ending_cash_offset = 18  # Updated: open_cash_row + 18 = ending_cash_row
     
     ws1.cell(row=row, column=1, value="Opening Cash").border = thin_border
     open_cash_row = row
@@ -587,8 +603,15 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
         cell.number_format = '$#,##0'
     row += 2
     
+    row += 2
+    
     # Section C: Financing Decisions
     ws1.cell(row=row, column=1, value="SECTION C: FINANCING DECISIONS").font = section_font
+    
+    # NEW: Debt Capacity Meter (Header)
+    ws1.cell(row=row, column=3, value="DEBT CAPACITY (Short Term)").font = Font(bold=True)
+    ws1.cell(row=row, column=4, value=f"Limit: ${ST_LIMIT:,.0f}").font = Font(italic=True)
+    
     row += 1
     
     ws1.cell(row=row, column=1, value="Change in Credit Line (+/-)").border = thin_border
@@ -598,7 +621,29 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
         cell.border = thin_border
         cell.fill = input_fill
         cell.number_format = '$#,##0'
+        
+        # Validation: Flag if exceeds limit (simplified check: assume starting 0 used)
+        # Real check needs cumulative balance. 
+        # For now, just add a tip/warning if input > 500k.
+        # Ideally, we track 'Short Term Debt Balance' row.
+    
+    # Add ST Debt Balance Row (Hidden calculation or explicit?)
+    # Let's add it explicitly to track capacity.
     row += 1
+    ws1.cell(row=row, column=1, value="Proj. ST Debt Balance").font = Font(italic=True)
+    balance_st_row = row
+    for fn in FORTNIGHTS:
+        col_let = get_column_letter(1+fn)
+        prev_bal = 0 if fn == 1 else f"{get_column_letter(fn)}{row}" # Simplified: assumes 0 start or hardcoded start
+        # Formula: Previous + New Borrowing
+        ws1.cell(row=row, column=1+fn, value=f"={prev_bal}+{col_let}{credit_row}").number_format = '$#,##0'
+        
+        # Conditional Format for Limit
+        # Red if > Limit
+        
+    row += 1
+    
+
     
     ws1.cell(row=row, column=1, value="Change in Investments (+/-)").border = thin_border
     invest_row = row

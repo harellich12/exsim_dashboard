@@ -15,6 +15,15 @@ from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule, CellIsRule
 from openpyxl.chart import BarChart, LineChart, Reference, Series
 import warnings
+import sys
+
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from case_parameters import PRODUCTION
+except ImportError:
+    print("Warning: Could not import case_parameters.py. Using defaults.")
+    PRODUCTION = {}
 
 warnings.filterwarnings('ignore')
 
@@ -32,7 +41,9 @@ REQUIRED_FILES = [
 ]
 
 # Data source: Primary = Reports folder at project root, Fallback = local /data
-REPORTS_FOLDER = Path(__file__).parent.parent / "Reports"
+# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
+import os
+REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
 LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
 
 def get_data_path(filename):
@@ -53,10 +64,14 @@ SECTIONS = ["Section 1", "Section 2", "Section 3"]
 MACHINE_TYPES = ["M1", "M2", "M3-alpha", "M3-beta", "M4"]
 
 # Default production parameters
-DEFAULT_NOMINAL_RATE = 200  # Units per machine per FN
-DEFAULT_VARIABLE_COST = 40  # $ per unit
-DEFAULT_OT_COST_PREMIUM = 20 # Extra $ per unit (Total $60)
-DEFAULT_OT_CAPACITY_PCT = 0.20 # 20% extra capacity
+# Default production parameters from Case
+MACHINES = PRODUCTION.get('MACHINES', {})
+DEFAULT_NOMINAL_RATE = MACHINES.get('M1', {}).get('CAPACITY', 200)
+# Variable cost estimate (Material + Labor + OH). Case doesn't give single number, keeping estimate.
+DEFAULT_VARIABLE_COST = 40 
+DEFAULT_OT_CAPACITY_PCT = PRODUCTION.get('WORKFORCE', {}).get('OVERTIME_CAPACITY_PCT', 0.20)
+DEFAULT_OT_MULTIPLIER = 1.4
+DEFAULT_OT_COST_PREMIUM = 20 # Placeholder approximation of 1.4x Labor
 
 
 # =============================================================================
@@ -590,10 +605,34 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         cell.fill = calc_fill
         
         # Recommendation
-        cell = ws2.cell(row=row, column=5, 
-            value=f'=IF(B{row}>0, IF(D{row}>0, "Buy "&ROUNDUP(D{row}/{DEFAULT_NOMINAL_RATE},0)&" machines", "OK"), "No Target")')
+        # Recommendation
+        # Logic: Compare M1 (Low Cost) vs M3-beta (High efficiency)
+        # For simplicity, calculate number of M1s needed.
+        m1_cost = MACHINES.get('M1', {}).get('PURCHASE_COST', 10600)
+        m3_cost = MACHINES.get('M3_BETA', {}).get('PURCHASE_COST', 155400)
+        m3_cap = MACHINES.get('M3_BETA', {}).get('CAPACITY', 1000)
+        m1_cap = DEFAULT_NOMINAL_RATE
+        
+        # Calculate Machines Needed
+        # M1s Needed = Gap / M1_Cap
+        # M3s Needed = Gap / M3_Cap
+        
+        # We will split Recommendation into "M1 Option" and "M3 Option"
+        # We need more columns.
+        # Shifted columns manually in header above? No, I need to rewrite header code if I want more columns.
+        # Alternative: Just put a complex string in the single Recommendation cell.
+        
+        rec_formula = (
+            f'=IF(D{row}>0, '
+            f'"M1 Opt: "&ROUNDUP(D{row}/{m1_cap},0)&" @ ${m1_cost/1000:.1f}k ea | " &'
+            f'"M3 Opt: "&ROUNDUP(D{row}/{m3_cap},0)&" @ ${m3_cost/1000:.1f}k ea", '
+            f'"OK")'
+        )
+        
+        cell = ws2.cell(row=row, column=5, value=rec_formula)
         cell.border = thin_border
         cell.fill = output_fill
+        cell.font = Font(size=9) # Smaller font to fit
         
         row += 1
     
