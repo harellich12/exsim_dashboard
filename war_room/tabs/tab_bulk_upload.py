@@ -130,6 +130,47 @@ def render_bulk_upload():
     
     st.markdown("---")
     
+    # TEST MODE - Load Mock Data
+    with st.expander("🧪 Test Mode - Load Mock Data", expanded=False):
+        st.markdown("""
+        **For testing purposes only.** This will load pre-generated mock data 
+        to populate all dashboards without requiring actual ExSim exports.
+        """)
+        
+        if st.button("🔬 Load Test Data", type="secondary", key="load_test_data"):
+            import os
+            from pathlib import Path
+            
+            # Find the mock_reports folder
+            base_path = Path(__file__).parent.parent.parent / "test_data" / "mock_reports"
+            
+            if not base_path.exists():
+                st.error(f"❌ Mock data folder not found: {base_path}")
+            else:
+                test_results = {'loaded': [], 'errors': []}
+                
+                for filename, config in EXPECTED_FILES.items():
+                    file_path = base_path / filename
+                    if file_path.exists():
+                        try:
+                            data = config['loader'](str(file_path))
+                            if data:
+                                set_state(config['state_key'], data)
+                                test_results['loaded'].append(filename)
+                        except Exception as e:
+                            test_results['errors'].append(f"{filename}: {str(e)}")
+                
+                if test_results['loaded']:
+                    reset_tab_states()
+                    st.success(f"✅ Loaded {len(test_results['loaded'])} test files!")
+                    st.balloons()
+                    
+                if test_results['errors']:
+                    for err in test_results['errors']:
+                        st.warning(f"⚠️ {err}")
+    
+    st.markdown("---")
+    
     # Multi-file uploader
     uploaded_files = st.file_uploader(
         "Select all Excel files to upload",
