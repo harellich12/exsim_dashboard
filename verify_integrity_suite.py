@@ -10,7 +10,7 @@ import warnings
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
-BASE_PATH = Path(r"c:\Users\Harel-PC\OneDrive - IESE Business School\Desktop\AI Tests\EXSIM models")
+BASE_PATH = Path(__file__).parent
 
 class ExSimIntegrityTest(unittest.TestCase):
     """Base test class with helper methods."""
@@ -80,16 +80,30 @@ class TestCFODashboard(ExSimIntegrityTest):
 
     def test_initial_cash_flow(self):
         """Verify Liquidity Monitor Starting Cash matches Initial Cash Flow Report."""
-        source_df = self.load_source_data(self.FOLDER, "initial_cash_flow.xlsx")
+        # Dashboard uses Reports folder first, then local data
+        reports_path = BASE_PATH / "Reports" / "initial_cash_flow.xlsx"
+        local_path = BASE_PATH / self.FOLDER / "data" / "initial_cash_flow.xlsx"
+        source_path = reports_path if reports_path.exists() else local_path
+        
+        source_df = pd.read_excel(source_path, header=None) if source_path.exists() else None
         wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
         ws = wb["LIQUIDITY_MONITOR"]
         
         expected_cash = 0
         if source_df is not None:
-             for _, row in source_df.iterrows():
-                if 'final cash' in str(row[0]).lower():
+            for _, row in source_df.iterrows():
+                label = str(row[0]).strip() if pd.notna(row[0]) else ''
+                # Match exact dashboard logic: "Final cash" with "start of the first fortnight"
+                if 'Final cash' in label and 'start of the first fortnight' in label:
                     expected_cash = self.parse_numeric(row[1])
                     break
+            # Fallback: just "Final cash"
+            if expected_cash == 0:
+                for _, row in source_df.iterrows():
+                    label = str(row[0]).strip() if pd.notna(row[0]) else ''
+                    if 'Final cash' in label:
+                        expected_cash = self.parse_numeric(row[1])
+                        break
         
         actual_cash = ws['B5'].value
         print(f"CFO: Checking Final Cash. Source={expected_cash}, Dashboard={actual_cash}")
@@ -98,16 +112,24 @@ class TestCFODashboard(ExSimIntegrityTest):
 
     def test_net_sales(self):
         """Verify Profit Control Net Sales matches Balance Sheet."""
-        source_df = self.load_source_data(self.FOLDER, "results_and_balance_statements.xlsx")
+        # Dashboard uses Reports folder first
+        reports_path = BASE_PATH / "Reports" / "results_and_balance_statements.xlsx"
+        local_path = BASE_PATH / self.FOLDER / "data" / "results_and_balance_statements.xlsx"
+        source_path = reports_path if reports_path.exists() else local_path
+        
+        source_df = pd.read_excel(source_path, header=None) if source_path.exists() else None
         wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
         ws = wb["PROFIT_CONTROL"]
         
         expected_sales = 0
         if source_df is not None:
-             for _, row in source_df.iterrows():
-                if 'net sales' in str(row[0]).lower():
-                    expected_sales = self.parse_numeric(row[1])
-                    break
+            for _, row in source_df.iterrows():
+                label = str(row[0]).strip().lower() if pd.notna(row[0]) else ''
+                if 'net sales' in label or 'revenue' in label:
+                    val = self.parse_numeric(row[1])
+                    if val > 0:
+                        expected_sales = val
+                        break
         
         actual_sales = ws['B11'].value
         print(f"CFO: Checking Net Sales. Source={expected_sales}, Dashboard={actual_sales}")
@@ -127,6 +149,87 @@ class TestCFODashboard(ExSimIntegrityTest):
         print(f"CFO: Checking Solvency Gauge Limit. Limit={limit}")
         self.assertEqual(limit, 0.6, "Risk Threshold line should be at 0.6")
         self.assertIn("B", str(curr_formula), "Current Debt Ratio should reference Column B")
+
+
+class TestProductionDashboard(ExSimIntegrityTest):
+    FOLDER = "Produciton Manager Dashboard"
+    SCRIPT = "generate_production_dashboard_zones.py"
+    OUTPUT = "Production_Dashboard_Zones.xlsx"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.run_generator(cls.FOLDER, cls.SCRIPT)
+
+    def test_raw_materials_load(self):
+        """Verify Raw Materials (Part A) loaded into Zone Calculators."""
+        source_df = self.load_source_data(self.FOLDER, "raw_materials.xlsx")
+        wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
+        ws = wb["ZONE_CALCULATORS"]
+
+        # Center Zone Part A is usually around row 6 (Material Stock)
+        # We need to find the "Center" block and "Material Stock" row.
+
+        # Approximate check: Center Part A inventory from source
+        expected_inv = 0
+        if source_df is not None:
+            # Logic from generator: Center - Section 1... Part A... Final Inventory (col 8)
+            # The logic in generator is slightly complex: it looks for zone/section header, then Part, then Final Inventory.
+            # Here we just scan for the specific row based on printed debugs or structure knowledge.
+            # In raw_materials.xlsx, row 10 is Final Inventory for Part A in Center - Section 1.
+            # Let's use a more robust search.
+            current_section = ""
+            current_part = ""
+            for _, row in source_df.iterrows():
+                val_str = str(row[0])
+                if "Section" in val_str:
+                    current_section = val_str
+                if "Part A" in val_str:
+                    current_part = "Part A"
+                elif "Part B" in val_str:
+                    current_part = "Part B"
+
+                if "Final inventory" in val_str and "Center" in current_section and current_part == "Part A":
+                     expected_inv = self.parse_numeric(row[8])
+                     break
+
+        # In Dashboard, find Center Zone -> Material Stock
+        actual_inv = 0
+        for row in range(1, 20):
+            if ws.cell(row=row, column=1).value == "Material Stock (Part A)":
+                actual_inv = ws.cell(row=row, column=2).value
+                break
+
+        print(f"Production: Center Part A Inv. Source={expected_inv}, Dashboard={actual_inv}")
+        self.assertEqual(expected_inv, actual_inv, "Part A Inventory mismatch")
+
+    def test_machine_counts(self):
+        """Verify Machine counts loaded from machine_spaces.xlsx."""
+        source_df = self.load_source_data(self.FOLDER, "machine_spaces.xlsx")
+        wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
+        ws = wb["ZONE_CALCULATORS"]
+
+        # Calculate expected total machines (M1+M2+M3+M4)
+        expected_machines = 0
+        if source_df is not None:
+            for _, row in source_df.iterrows():
+                label = str(row[0])
+                if label in ["M1", "M2", "M3-alpha", "M3-beta", "M4"]:
+                    # Iterate columns backwards to find latest count
+                    for i in range(len(row)-1, 0, -1):
+                        val = self.parse_numeric(row[i])
+                        if val > 0:
+                            expected_machines += int(val)
+                            break
+
+        # In Dashboard, find "Machines in Zone" for Center (first occurrence)
+        actual_machines = 0
+        for row in range(1, 20):
+            if ws.cell(row=row, column=1).value == "Machines in Zone":
+                actual_machines = ws.cell(row=row, column=2).value
+                break
+
+        print(f"Production: Total Machines (Center). Source={expected_machines}, Dashboard={actual_machines}")
+        self.assertEqual(expected_machines, actual_machines, "Machine count mismatch")
 
 
 class TestCPODashboard(ExSimIntegrityTest):

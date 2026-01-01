@@ -15,13 +15,45 @@ from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule, DataBarRule
 from openpyxl.chart import LineChart, BarChart, Reference, Series
 import warnings
+import sys
+
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from case_parameters import PURCHASING
+except ImportError:
+    print("Warning: Could not import case_parameters.py. Using defaults.")
+    PURCHASING = {}
 
 warnings.filterwarnings('ignore')
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'raw_materials.xlsx',
+    'production.xlsx',
+    'Procurement Decisions.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
+import os
+REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "Purchasing_Dashboard.xlsx"
 
 FORTNIGHTS = list(range(1, 9))  # 1-8
@@ -31,26 +63,28 @@ PIECES = ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"]
 SUPPLIERS = ["Supplier A", "Supplier B", "Supplier C"]
 
 # Default supplier configuration
+BOM = PURCHASING.get('BOM_COSTS', {})
+
 DEFAULT_SUPPLIERS = {
     "Part A": [
-        {"name": "Supplier A", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier B", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier C", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier A", "lead_time": 0, "cost": BOM.get("Part A", 15), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier B", "lead_time": 0, "cost": BOM.get("Part A", 15), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier C", "lead_time": 0, "cost": BOM.get("Part A", 15), "payment_terms": 0, "batch_size": 0},
     ],
     "Part B": [
-        {"name": "Supplier A", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier B", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier C", "lead_time": 0, "cost": 0, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier A", "lead_time": 0, "cost": BOM.get("Part B", 25), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier B", "lead_time": 0, "cost": BOM.get("Part B", 25), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier C", "lead_time": 0, "cost": BOM.get("Part B", 25), "payment_terms": 0, "batch_size": 0},
     ]
 }
 
 DEFAULT_PIECES_CONFIG = {
-    "Piece 1": {"cost": 0, "batch_size": 0},
-    "Piece 2": {"cost": 0, "batch_size": 0},
-    "Piece 3": {"cost": 0, "batch_size": 0},
-    "Piece 4": {"cost": 0, "batch_size": 0},
-    "Piece 5": {"cost": 0, "batch_size": 0},
-    "Piece 6": {"cost": 0, "batch_size": 0},
+    "Piece 1": {"cost": BOM.get("Piece 1", 2), "batch_size": 0},
+    "Piece 2": {"cost": BOM.get("Piece 2", 2), "batch_size": 0},
+    "Piece 3": {"cost": BOM.get("Piece 3", 2), "batch_size": 0},
+    "Piece 4": {"cost": BOM.get("Piece 4", 2), "batch_size": 0},
+    "Piece 5": {"cost": BOM.get("Piece 5", 2), "batch_size": 0},
+    "Piece 6": {"cost": BOM.get("Piece 6", 2), "batch_size": 0},
 }
 
 
@@ -354,8 +388,58 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     
     # Column widths
     ws2.column_dimensions['A'].width = 25
+    # Column widths
+    ws2.column_dimensions['A'].width = 25
     ws2.column_dimensions['B'].width = 50
     
+    # Section: Material Cost Analyzer (VS BOM)
+    ws2['A22'] = "MATERIAL COST ANALYZER"
+    ws2['A22'].font = section_font
+    
+    headers = ['Item', 'Avg Supplier Cost', 'BOM Target', 'Variance %', 'Status']
+    for col, h in enumerate(headers, start=1):
+        ws2.cell(row=23, column=col, value=h).font = header_font
+        ws2.cell(row=23, column=col).fill = header_fill
+        
+    row = 24
+    # Analyze Parts (Average of Suppliers in Config)
+    # Ref: SUPPLIER_CONFIG!D6:D8 (Part A), D9:D11 (Part B)
+    # Hardcoded ranges for simplicity based on default layout
+    
+    # Part A
+    ws2.cell(row=row, column=1, value="Part A").border = thin_border
+    ws2.cell(row=row, column=2, value="=AVERAGE(SUPPLIER_CONFIG!D6:D8)").number_format = '$#,##0.00'
+    ws2.cell(row=row, column=2).border = thin_border
+    ws2.cell(row=row, column=3, value=BOM.get('Part A', 15)).number_format = '$#,##0.00' # Target
+    ws2.cell(row=row, column=3).border = thin_border
+    ws2.cell(row=row, column=4, value=f"=IF(C{row}>0, (B{row}-C{row})/C{row}, 0)").number_format = '0.0%'
+    ws2.cell(row=row, column=4).border = thin_border
+    ws2.cell(row=row, column=5, value=f'=IF(B{row}>C{row}, "OVER BUDGET", "OK")').font = Font(bold=True)
+    ws2.cell(row=row, column=5).border = thin_border
+    row += 1
+    
+    # Part B
+    ws2.cell(row=row, column=1, value="Part B").border = thin_border
+    ws2.cell(row=row, column=2, value="=AVERAGE(SUPPLIER_CONFIG!D9:D11)").number_format = '$#,##0.00'
+    ws2.cell(row=row, column=2).border = thin_border
+    ws2.cell(row=row, column=3, value=BOM.get('Part B', 25)).number_format = '$#,##0.00'
+    ws2.cell(row=row, column=3).border = thin_border
+    ws2.cell(row=row, column=4, value=f"=IF(C{row}>0, (B{row}-C{row})/C{row}, 0)").number_format = '0.0%'
+    ws2.cell(row=row, column=4).border = thin_border
+    ws2.cell(row=row, column=5, value=f'=IF(B{row}>C{row}, "OVER BUDGET", "OK")').font = Font(bold=True)
+    ws2.cell(row=row, column=5).border = thin_border
+    
+    # Conditional formatting for Over Budget (Red)
+    ws2.conditional_formatting.add(f'B24:B{row}', 
+        FormulaRule(formula=[f'B24>C24'], fill=red_fill))
+
+    # Column widths
+    ws2.column_dimensions['A'].width = 25
+    ws2.column_dimensions['B'].width = 20
+    ws2.column_dimensions['C'].width = 20
+    ws2.column_dimensions['D'].width = 15
+    ws2.column_dimensions['E'].width = 15
+
     # =========================================================================
     # TAB 3: MRP_ENGINE
     # =========================================================================
@@ -755,19 +839,21 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Raw Materials
-    materials_path = DATA_FOLDER / "raw_materials.xlsx"
-    if materials_path.exists():
+    materials_path = get_data_path("raw_materials.xlsx")
+    if materials_path:
         materials_data = load_raw_materials(materials_path)
-        print(f"  [OK] Loaded raw materials inventory")
+        print(f"  [OK] Loaded raw materials from {materials_path.parent.name}/")
     else:
         materials_data = load_raw_materials(None)
         print("  [!] Using default inventory data")
     
     # Production Costs
-    costs_path = DATA_FOLDER / "production.xlsx"
-    if costs_path.exists():
+    costs_path = get_data_path("production.xlsx")
+    if costs_path:
         cost_data = load_production_costs(costs_path)
         print(f"  [OK] Loaded production costs")
     else:
@@ -775,15 +861,15 @@ def main():
         print("  [!] Using default cost data")
     
     # Procurement Template
-    template_path = DATA_FOLDER / "Procurement Decisions.xlsx"
-    if template_path.exists():
+    template_path = get_data_path("Procurement Decisions.xlsx")
+    if template_path:
         template_data = load_procurement_template(template_path)
         print(f"  [OK] Loaded procurement template")
     else:
         template_data = load_procurement_template(None)
         print("  [!] Using default template layout")
     
-    print("\n[*] Generating Purchasing Dashboard...")
+    print("\n[*] Creating dashboard...")
     
     create_purchasing_dashboard(materials_data, cost_data, template_data)
     

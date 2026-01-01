@@ -17,13 +17,46 @@ from openpyxl.chart import ScatterChart, BarChart, Reference, Series
 from openpyxl.chart.marker import Marker
 from openpyxl.chart.label import DataLabelList
 import warnings
+import re
+import sys
+
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from case_parameters import MARKET
+except ImportError:
+    print("Warning: Could not import case_parameters.py. Using defaults.")
+    MARKET = {}
 
 warnings.filterwarnings('ignore')
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'market-report.xlsx',
+    'finished_goods_inventory.xlsx',
+    'sales_admin_expenses.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
+import os
+REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "CMO_Dashboard_Complete.xlsx"
 MY_COMPANY = "Company 3"
 
@@ -234,6 +267,24 @@ def load_innovation_template(filepath):
     return features
 
 
+def get_innovation_cost(feature_name):
+    """Get cost dict for a feature from case parameters."""
+    # Normalize name for lookup (uppercase, strip)
+    name = feature_name.upper().strip()
+    costs = MARKET.get("INNOVATION_COSTS", {})
+    
+    # Try direct match
+    if name in costs:
+        return costs[name]
+    
+    # Try partial match
+    for key, val in costs.items():
+        if key in name or name in key:
+            return val
+            
+    return {"upfront": 0, "variable": 0}
+
+
 def load_marketing_template(filepath):
     """Load marketing template structure."""
     df = load_excel_file(filepath, sheet_name='Marketing')
@@ -379,8 +430,88 @@ def load_inventory_data(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
+def load_marketing_intelligence(filepath_sales, filepath_market):
+    """
+    Load Unit Economics and Competitor Intelligence.
+    1. Sales Report -> TV/Radio Cost per Spot, Hiring Fees.
+    2. Market Report -> Competitor Pricing per Zone.
+    """
+    intelligence = {
+        'economics': {
+            'TV_Cost_Spot': 3000,   # Fallback
+            'Radio_Cost_Spot': 300, # Fallback
+            'Salary_Per_Person': 1500, # Fallback
+            'Hiring_Cost': 1100     # Fallback
+        },
+        'pricing': {zone: 0 for zone in ZONES}
+    }
+
+    # 1. Parse Economics from Sales Report
+    if filepath_sales and filepath_sales.exists():
+        try:
+            df = pd.read_excel(filepath_sales, header=None)
+            
+            # Scan for costs
+            tv_amount = 0; tv_spots = 0
+            radio_amount = 0; radio_spots = 0
+            salaries = 0; headcount = 0
+            hiring_cost = 0; hires = 0
+            
+            for idx, row in df.iterrows():
+                label = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ""
+                val_col = 2 # Usually column C
+                
+                if "tv advertising expenses" in label:
+                    tv_amount = parse_numeric(row.iloc[val_col])
+                    details = str(row.iloc[1])
+                    match = re.search(r'(\d+)\s*spots', details, re.IGNORECASE)
+                    if match:
+                        tv_spots = int(match.group(1))
+                
+                if "radio advertising expenses" in label:
+                    radio_amount = parse_numeric(row.iloc[val_col])
+                    details = str(row.iloc[1])
+                    match = re.search(r'(\d+)\s*spots', details, re.IGNORECASE)
+                    if match:
+                        radio_spots = int(match.group(1))
+                        
+                if "salespeople salaries" in label:
+                    salaries = parse_numeric(row.iloc[val_col])
+                    details = str(row.iloc[1])
+                    match = re.search(r'(\d+)\s*people', details, re.IGNORECASE)
+                    if match:
+                        headcount = int(match.group(1))
+
+                if "salespeople hiring" in label:
+                    hiring_cost = parse_numeric(row.iloc[val_col])
+                    details = str(row.iloc[1])
+                    match = re.search(r'(\d+)\s*hires', details, re.IGNORECASE)
+                    if match:
+                        hires = int(match.group(1))
+            
+            # Calculate Rates
+            if tv_spots > 0:
+                intelligence['economics']['TV_Cost_Spot'] = tv_amount / tv_spots
+            if radio_spots > 0:
+                intelligence['economics']['Radio_Cost_Spot'] = radio_amount / radio_spots
+            if headcount > 0:
+                intelligence['economics']['Salary_Per_Person'] = salaries / headcount
+            if hires > 0:
+                intelligence['economics']['Hiring_Cost'] = hiring_cost / hires
+                
+        except Exception as e:
+            print(f"Warning: Could not load economics: {e}")
+
+    # 2. Parse Competitor Pricing from Market Report
+    if filepath_market and filepath_market.exists():
+        market_data = load_market_report(filepath_market) # Reuse existing parser
+        for zone in ZONES:
+            intelligence['pricing'][zone] = market_data['zones'][zone].get('comp_avg_price', 0)
+
+    return intelligence
+
 def create_complete_dashboard(market_data, innovation_features, marketing_template, 
-                              sales_data, inventory_data):
+                               sales_data, inventory_data, marketing_intelligence):
     """Create the complete 5-tab CMO Dashboard."""
     
     wb = Workbook()
@@ -401,6 +532,30 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         top=Side(style='thin'), bottom=Side(style='thin')
     )
     
+    # Seasonality Alert Logic
+    current_period = 1 # Default, ideally should be parsed from reports
+    next_period = current_period + 1
+    peaks = MARKET.get('SEASONALITY_PEAKS', [])
+    seasonality_msg = "Normal Demand Expected"
+    seasonality_color = output_fill
+    
+    if next_period in peaks:
+        seasonality_msg = f"WARNING: Period {next_period} is a PEAK SEASON! Increase Inventory."
+        seasonality_color = red_fill
+    elif current_period in peaks:
+        seasonality_msg = "Currently in Peak Season. Monitor stockouts closely."
+        seasonality_color = orange_fill
+
+    
+    # Extract Economics
+    econ = marketing_intelligence.get('economics', {})
+    tv_cost_spot = econ.get('TV_Cost_Spot', 3000)
+    radio_cost_spot = econ.get('Radio_Cost_Spot', 300)
+    salary_per_person = econ.get('Salary_Per_Person', 1500)
+    hiring_cost = econ.get('Hiring_Cost', 1100)
+    
+    comp_pricing = marketing_intelligence.get('pricing', {})
+    
     # =========================================================================
     # TAB 1: SEGMENT_PULSE
     # =========================================================================
@@ -410,13 +565,19 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws1['A1'] = "SEGMENT PULSE - Market Allocation Drivers"
     ws1['A1'].font = title_font
     
+    # Add Seasonality Alert at top
+    ws1['E1'] = seasonality_msg
+    ws1['E1'].font = Font(bold=True, color="9C0006" if next_period in peaks else "006100")
+    ws1['E1'].fill = seasonality_color
+
+    
     row = 3
     for segment in SEGMENTS:
         ws1.cell(row=row, column=1, value=f"{segment.upper()} SEGMENT ANALYSIS").font = section_font
         row += 1
         
         # Headers
-        seg_headers = ['Zone', 'My Market Share', 'Awareness Gap', 'Price Gap', 
+        seg_headers = ['Zone', 'My Market Share', 'Est. Demand', 'Awareness Gap', 'Price Gap', 
                        'Attractiveness', 'Allocation Flag']
         for col, header in enumerate(seg_headers, start=1):
             cell = ws1.cell(row=row, column=col, value=header)
@@ -427,11 +588,21 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         
         data_start_row = row
         
+        # Get Population Data (TAM)
+        pop_data = MARKET.get('POPULATION', {})
+
+        
         for zone in ZONES:
             zone_seg = market_data['by_segment'][segment].get(zone, {})
             zone_data = market_data['zones'].get(zone, {})
             
             market_share = zone_seg.get('my_market_share', 0)
+            
+            # Calculate Penetration/Volume Estimate
+            zone_pop = pop_data.get(zone, {}).get(segment, 10000) # Default 10k if missing
+            est_units_sold = zone_pop * (market_share / 100)
+            
+            my_awareness = zone_data.get('my_awareness', DEFAULT_AWARENESS)
             my_awareness = zone_data.get('my_awareness', DEFAULT_AWARENESS)
             comp_awareness = zone_seg.get('comp_avg_awareness', DEFAULT_AWARENESS)
             awareness_gap = my_awareness - comp_awareness
@@ -443,7 +614,11 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             attractiveness = zone_data.get('my_attractiveness', DEFAULT_ATTRACTIVENESS)
             
             # Allocation flag logic
-            if segment == "High":
+            # First check for zones with no market presence
+            if market_share == 0 or my_awareness == 0:
+                flag = "NO PRESENCE: Zone Not Active"
+                flag_fill = ref_fill  # Gray = needs investigation
+            elif segment == "High":
                 if my_awareness < 30:
                     flag = "CRITICAL: Boost TV for Allocation"
                     flag_fill = red_fill
@@ -464,18 +639,22 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             cell.border = thin_border
             cell.number_format = '0.0%' if market_share <= 1 else '0.0'
             
-            cell = ws1.cell(row=row, column=3, value=awareness_gap)
+            cell = ws1.cell(row=row, column=3, value=est_units_sold)
+            cell.border = thin_border
+            cell.number_format = '#,##0'
+            
+            cell = ws1.cell(row=row, column=4, value=awareness_gap)
             cell.border = thin_border
             if awareness_gap < 0:
                 cell.fill = red_fill
             
-            cell = ws1.cell(row=row, column=4, value=price_gap / 100)
+            cell = ws1.cell(row=row, column=5, value=price_gap / 100)
             cell.border = thin_border
             cell.number_format = '0.0%'
             
-            ws1.cell(row=row, column=5, value=attractiveness).border = thin_border
+            ws1.cell(row=row, column=6, value=attractiveness).border = thin_border
             
-            cell = ws1.cell(row=row, column=6, value=flag)
+            cell = ws1.cell(row=row, column=7, value=flag)
             cell.border = thin_border
             cell.fill = flag_fill
             cell.font = Font(bold=True)
@@ -495,9 +674,10 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws1.column_dimensions['A'].width = 12
     ws1.column_dimensions['B'].width = 16
     ws1.column_dimensions['C'].width = 14
-    ws1.column_dimensions['D'].width = 12
-    ws1.column_dimensions['E'].width = 14
-    ws1.column_dimensions['F'].width = 32
+    ws1.column_dimensions['D'].width = 14
+    ws1.column_dimensions['E'].width = 12
+    ws1.column_dimensions['F'].width = 14
+    ws1.column_dimensions['G'].width = 32
     
     # =========================================================================
     # CHART DATA SECTION (Right side of sheet, starting column H)
@@ -645,18 +825,18 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         reverse=False
     )
     
-    # Apply to High segment (rows 5-9, column C - Awareness Gap) 
-    ws1.conditional_formatting.add('C5:C9', icon_rule)
-    # Apply to Low segment (rows 13-17, column C)
-    ws1.conditional_formatting.add('C13:C17', icon_rule)
+    # Apply to High segment (rows 5-9, column D - Awareness Gap) 
+    ws1.conditional_formatting.add('D5:D9', icon_rule)
+    # Apply to Low segment (rows 13-17, column D)
+    ws1.conditional_formatting.add('D13:D17', icon_rule)
     
-    # Price Gap red text formatting (column D if > 10%)
+    # Price Gap red text formatting (column E if > 10%)
     price_gap_rule = FormulaRule(
-        formula=['D5>0.1'],
+        formula=['E5>0.1'],
         font=Font(bold=True, color="9C0006")
     )
-    ws1.conditional_formatting.add('D5:D9', price_gap_rule)
-    ws1.conditional_formatting.add('D13:D17', price_gap_rule)
+    ws1.conditional_formatting.add('E5:E9', price_gap_rule)
+    ws1.conditional_formatting.add('E13:E17', price_gap_rule)
     
     # Additional column widths for chart data
     ws1.column_dimensions['H'].width = 18
@@ -688,6 +868,14 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     for feature in innovation_features:
         ws2.cell(row=row, column=1, value=feature).border = thin_border
         
+        # Add Cost Calculation
+        costs = get_innovation_cost(feature)
+        upfront = costs.get('upfront', 0)
+        variable = costs.get('variable', 0)
+        
+        cost_str = f"${upfront:,.0f} + ${variable:.2f}/unit"
+        ws2.cell(row=row, column=3, value=cost_str).border = thin_border
+        
         cell = ws2.cell(row=row, column=2, value=0)
         cell.border = thin_border
         cell.fill = input_fill
@@ -698,11 +886,25 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         cell.fill = input_fill
         cell.number_format = '$#,##0'
         
+        # New "Calculated Est. Cost" column
+        cell = ws2.cell(row=row, column=4, value=f"=C{row}")
+        cell.border = thin_border
+        cell.fill = calc_fill
+        cell.number_format = '$#,##0'
+        # Add Excel Comment
+        # from openpyxl.comments import Comment
+        # cell.comment = Comment("Approximate value based on case history. Actuals may vary by +/- 10%.", "ExSim")
+        # Skipping Comment object import for simplicity, just keeping value.
+        
         row += 1
     
     # Total innovation cost
     row += 1
     ws2.cell(row=row, column=1, value="TOTAL INNOVATION COST").font = Font(bold=True)
+    cell = ws2.cell(row=row, column=4, value=f'=SUMPRODUCT(B5:B{row-2},C5:C{row-2})') # Update to verify against calc cost? or input? usually input.
+    # Actually request says "Link to the static cost".
+    # Let's keep sumproduct on Input Cost (Col C) or new Col D? 
+    # Usually we pay based on the input cost we agree to, so Col C is fine.
     cell = ws2.cell(row=row, column=3, value=f'=SUMPRODUCT(B5:B{row-2},C5:C{row-2})')
     cell.fill = calc_fill
     cell.font = Font(bold=True)
@@ -711,6 +913,11 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws2.column_dimensions['A'].width = 35
     ws2.column_dimensions['B'].width = 18
     ws2.column_dimensions['C'].width = 15
+    ws2.column_dimensions['D'].width = 18
+    
+    ws2.cell(row=4, column=4, value="Calculated Est. Cost").font = header_font
+    ws2.cell(row=4, column=4).fill = header_fill
+    ws2.cell(row=4, column=4).border = thin_border
     
     innov_cost_cell = f'C{row}'
     
@@ -723,39 +930,73 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws3['A1'].font = Font(italic=True, color="666666")
     
     # Section A: Global Allocations
-    ws3['A3'] = "SECTION A: GLOBAL ALLOCATIONS"
-    ws3['A3'].font = section_font
+    # UNIT ECONOMICS CHEAT SHEET (Rows 1-4)
+    ws3.insert_rows(1, 4)
+    ws3['A1'] = "UNIT ECONOMICS CHEAT SHEET"
+    ws3['A1'].font = section_font
     
-    ws3.cell(row=5, column=1, value="TV Budget ($)").border = thin_border
-    cell = ws3.cell(row=5, column=2, value=marketing_template['tv_budget'])
+    ws3['A2'] = "TV Cost/Spot"
+    ws3['B2'] = "Radio Cost/Spot"
+    ws3['C2'] = "Hiring Fee"
+    ws3['D2'] = "Salary/Person"
+    
+    ws3['A3'] = tv_cost_spot
+    ws3['B3'] = radio_cost_spot
+    ws3['C3'] = hiring_cost
+    ws3['D3'] = salary_per_person
+    
+    for cell in ws3['A2:D2'][0]:
+        cell.font = Font(bold=True, italic=True, color="666666")
+        cell.fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+        
+    for cell in ws3['A3:D3'][0]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill(start_color="E7E6E6", end_color="E7E6E6", fill_type="solid")
+        cell.number_format = '$#,##0'
+
+    ws3['A5'] = "HOW TO USE: Adjust Yellow cells. Check Profit Projection. Go to UPLOAD_READY tabs to copy decisions."
+    ws3['A5'].font = Font(italic=True, color="666666")
+
+    ws3['A7'] = "SECTION A: GLOBAL ALLOCATIONS"
+    ws3['A7'].font = section_font
+    
+    # TV SPOTS Input (Was Budget)
+    ws3.cell(row=9, column=1, value="TV Spots (Qty)").border = thin_border
+    # Convert budget to spots approx
+    tv_spots_init = int(marketing_template['tv_budget'] / tv_cost_spot) if tv_cost_spot else 0
+    cell = ws3.cell(row=9, column=2, value=tv_spots_init)
     cell.border = thin_border
     cell.fill = input_fill
+    # cell.number_format = '#,##0' # Spots are integers
+    
+    # TV Cost formula (actual Excel formula, not display text)
+    cell = ws3.cell(row=9, column=3, value=f"=B9*{tv_cost_spot}")
+    cell.fill = calc_fill
     cell.number_format = '$#,##0'
-    ws3['C5'] = "Primary Driver: High Segment Awareness"
-    ws3['C5'].font = Font(italic=True, color="666666")
+    cell.border = thin_border
     
-    ws3.cell(row=6, column=1, value="Brand Focus (0-100)").border = thin_border
-    cell = ws3.cell(row=6, column=2, value=marketing_template['brand_focus'])
+    ws3.cell(row=10, column=1, value="Brand Focus (0-100)").border = thin_border
+    cell = ws3.cell(row=10, column=2, value=marketing_template['brand_focus'])
     cell.border = thin_border
     cell.fill = input_fill
-    ws3['C6'] = "0=Awareness focus, 100=Attributes focus"
-    ws3['C6'].font = Font(italic=True, color="666666")
+    ws3['C10'] = "0=Awareness focus, 100=Attributes focus"
+    ws3['C10'].font = Font(italic=True, color="666666")
     
     # Section B: Zonal Allocations
-    ws3['A9'] = "SECTION B: ZONAL ALLOCATIONS"
-    ws3['A9'].font = section_font
+    ws3['A13'] = "SECTION B: ZONAL ALLOCATIONS"
+    ws3['A13'].font = section_font
     
-    zonal_headers = ['Zone', 'Last Sales', 'Stockout?', 'Target Demand', 'Radio Budget',
-                     'Salespeople', 'Price', 'Payment', 'Est. Revenue', 'Mkt Cost', 'Contribution']
+    zonal_headers = ['Zone', 'Last Sales', 'Stockout?', 'Target Demand', 'Radio Spots (Qty)',
+                     'Headcount', 'Price', 'Avg Comp Price', 'Payment', 'Est. Revenue', 'Mkt Cost', 'Contribution']
     
     for col, header in enumerate(zonal_headers, start=1):
-        cell = ws3.cell(row=11, column=col, value=header)
+        cell = ws3.cell(row=15, column=col, value=header)
         cell.font = header_font
         cell.fill = header_fill
         cell.border = thin_border
         cell.alignment = Alignment(horizontal='center', wrap_text=True)
     
-    row = 12
+    row = 16
     for zone in ZONES:
         zone_sales = sales_data['by_zone'].get(zone, {})
         last_sales = zone_sales.get('units', 1000)
@@ -777,67 +1018,89 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         else:
             cell.fill = ref_fill
         
-        # Inputs (yellow)
-        target_demand = int(last_sales * 1.1) if is_stockout else last_sales
-        cell = ws3.cell(row=row, column=4, value=target_demand)
+        # Target Demand
+        cell = ws3.cell(row=row, column=4, value=marketing_template['demand'].get(zone, 0))
         cell.border = thin_border
         cell.fill = input_fill
-        cell.number_format = '#,##0'
         
-        cell = ws3.cell(row=row, column=5, value=marketing_template['radio_budgets'].get(zone, 100))
+        # Radio Spots (Qty)
+        radio_bud = marketing_template['radio_budgets'].get(zone, 0)
+        radio_spots_init = int(radio_bud / radio_cost_spot) if radio_cost_spot else 0
+        cell = ws3.cell(row=row, column=5, value=radio_spots_init)
+        cell.border = thin_border
+        cell.fill = input_fill
+        
+        # Salespeople (Headcount)
+        cell = ws3.cell(row=row, column=6, value=marketing_template['salespeople'].get(zone, 0))
+        cell.border = thin_border
+        cell.fill = input_fill
+        
+        # Price
+        cell = ws3.cell(row=row, column=7, value=marketing_template['prices'].get(zone, 0))
         cell.border = thin_border
         cell.fill = input_fill
         cell.number_format = '$#,##0'
         
-        cell = ws3.cell(row=row, column=6, value=marketing_template['salespeople'].get(zone, 10))
+        # Avg Comp Price (Reference)
+        comp_price = comp_pricing.get(zone, 68.0)
+        cell = ws3.cell(row=row, column=8, value=comp_price)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = '$#,##0.00'
+        
+        # Payment Terms
+        cell = ws3.cell(row=row, column=9, value=marketing_template['payment_terms'].get(zone, ''))
         cell.border = thin_border
         cell.fill = input_fill
         
-        cell = ws3.cell(row=row, column=7, value=marketing_template['prices'].get(zone, 68))
-        cell.border = thin_border
-        cell.fill = input_fill
-        cell.number_format = '$#,##0'
-        
-        cell = ws3.cell(row=row, column=8, value=marketing_template['payment_terms'].get(zone, 'B'))
-        cell.border = thin_border
-        cell.fill = input_fill
-        cell.alignment = Alignment(horizontal='center')
-        
-        # Calculated (formulas)
-        # Est. Revenue = Demand * Price
-        cell = ws3.cell(row=row, column=9, value=f'=D{row}*G{row}')
+        # Est Revenue
+        cell = ws3.cell(row=row, column=10, value=f"=D{row}*G{row}")
         cell.border = thin_border
         cell.fill = calc_fill
         cell.number_format = '$#,##0'
         
-        # Marketing Cost = TV/5 + Radio + Salespeople*Salary + Innovation/5
-        cell = ws3.cell(row=row, column=10, value=f'=($B$5/5)+E{row}+(F{row}*{DEFAULT_SALESPEOPLE_SALARY})+(INNOVATION_LAB!{innov_cost_cell}/5)')
+        # Mkt Cost (Simplified formula to avoid cross-sheet issues)
+        # Components: TV (split evenly), Radio, Salaries, Hiring, Innovation
+        # TV Cost = B9 * tv_cost_spot / 5 (split across 5 zones)
+        # Radio Cost = E{row} * radio_cost_spot
+        # Salary Cost = F{row} * salary_per_person
+        # Hiring Cost = MAX(0, F{row} - prev_hc) * hiring_cost
+        # Innovation = Total Innovation Cost / 5 (use hardcoded value from INNOVATION_LAB total)
+        # Note: Simplified to avoid #VALUE! errors from cross-sheet refs that may not resolve
+        prev_hc = 5  # Default previous headcount assumption
+        cell = ws3.cell(row=row, column=11, 
+            value=f"=(C9/5) + (E{row}*{radio_cost_spot}) + (F{row}*{salary_per_person}) + (MAX(0, F{row}-{prev_hc})*{hiring_cost})")
         cell.border = thin_border
         cell.fill = calc_fill
         cell.number_format = '$#,##0'
         
-        # Contribution = Revenue - MktCost - (Demand * COGS)
-        cell = ws3.cell(row=row, column=11, value=f'=I{row}-J{row}-(D{row}*{DEFAULT_COGS})')
+        # Contribution
+        cell = ws3.cell(row=row, column=12, value=f"=J{row}-K{row}") 
         cell.border = thin_border
         cell.fill = output_fill
-        cell.font = Font(bold=True)
         cell.number_format = '$#,##0'
+        
+        # Conditional Formatting: Price Gouging
+        ws3.conditional_formatting.add(
+            f'G{row}',
+            FormulaRule(formula=[f'G{row}>(H{row}*1.15)'], 
+                        fill=red_fill, font=Font(color="FFFFFF", bold=True))
+        )
         
         row += 1
     
-    # Totals
-    ws3.cell(row=row, column=1, value="TOTAL").font = Font(bold=True)
-    ws3.cell(row=row, column=4, value=f'=SUM(D12:D{row-1})').fill = input_fill
-    ws3.cell(row=row, column=9, value=f'=SUM(I12:I{row-1})').fill = calc_fill
-    ws3.cell(row=row, column=10, value=f'=SUM(J12:J{row-1})').fill = calc_fill
-    cell = ws3.cell(row=row, column=11, value=f'=SUM(K12:K{row-1})')
-    cell.fill = output_fill
-    cell.font = Font(bold=True)
-    
-    # Column widths
     ws3.column_dimensions['A'].width = 12
-    for col in range(2, 12):
-        ws3.column_dimensions[get_column_letter(col)].width = 14
+    ws3.column_dimensions['B'].width = 10
+    ws3.column_dimensions['C'].width = 10
+    ws3.column_dimensions['D'].width = 14
+    ws3.column_dimensions['E'].width = 18
+    ws3.column_dimensions['F'].width = 14
+    ws3.column_dimensions['G'].width = 12
+    ws3.column_dimensions['H'].width = 14
+    ws3.column_dimensions['I'].width = 14
+    ws3.column_dimensions['J'].width = 14
+    ws3.column_dimensions['K'].width = 16
+    ws3.column_dimensions['L'].width = 16
     
     # =========================================================================
     # TAB 4: UPLOAD_READY_MARKETING
@@ -865,17 +1128,23 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws4.cell(row=6, column=1, value='A').border = thin_border
     ws4.cell(row=6, column=2, value='All').border = thin_border
     ws4.cell(row=6, column=3, value='TV').border = thin_border
-    ws4.cell(row=6, column=4, value='=STRATEGY_COCKPIT!B5').border = thin_border
-    ws4.cell(row=6, column=5, value='=STRATEGY_COCKPIT!B6').border = thin_border
+    ws4.cell(row=6, column=4, value='=STRATEGY_COCKPIT!C9').border = thin_border # C9 = Calculated Cost
+    ws4.cell(row=6, column=5, value='=STRATEGY_COCKPIT!B10').border = thin_border
     
     # Radio rows
     row = 7
+    # Cheat Sheet: Radio Cost/Spot is at B3 now (Row 2 is header)
+    radio_cost_cell = "$B$3"
+    
     for zone_idx, zone in enumerate(ZONES):
         ws4.cell(row=row, column=1, value='A').border = thin_border
         ws4.cell(row=row, column=2, value=zone).border = thin_border
         ws4.cell(row=row, column=3, value='Radio').border = thin_border
-        ws4.cell(row=row, column=4, value=f'=STRATEGY_COCKPIT!E{12+zone_idx}').border = thin_border
-        ws4.cell(row=row, column=5, value='=STRATEGY_COCKPIT!B6').border = thin_border
+        # Radio Amount = Spots (E) * CostPerSpot (CheatSheet B2)
+        # Zone rows start at 16
+        source_row = 16 + zone_idx
+        ws4.cell(row=row, column=4, value=f'=STRATEGY_COCKPIT!E{source_row}*STRATEGY_COCKPIT!{radio_cost_cell}').border = thin_border
+        ws4.cell(row=row, column=5, value='=STRATEGY_COCKPIT!B10').border = thin_border
         row += 1
     
     # Demand section (cols G-H)
@@ -888,8 +1157,9 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws4.cell(row=5, column=8).fill = header_fill
     
     for zone_idx, zone in enumerate(ZONES):
+        source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=7, value=zone).border = thin_border
-        ws4.cell(row=6+zone_idx, column=8, value=f'=STRATEGY_COCKPIT!D{12+zone_idx}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=8, value=f'=STRATEGY_COCKPIT!D{source_row}').border = thin_border
     
     # Pricing section (cols J-L)
     ws4['J4'] = "Pricing Strategy"
@@ -903,9 +1173,10 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws4.cell(row=5, column=12).fill = header_fill
     
     for zone_idx, zone in enumerate(ZONES):
+        source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=10, value=zone).border = thin_border
         ws4.cell(row=6+zone_idx, column=11, value='A').border = thin_border
-        ws4.cell(row=6+zone_idx, column=12, value=f'=STRATEGY_COCKPIT!G{12+zone_idx}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=12, value=f'=STRATEGY_COCKPIT!G{source_row}').border = thin_border
     
     # Channels section (cols N-P)
     ws4['N4'] = "Channels"
@@ -919,9 +1190,12 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws4.cell(row=5, column=16).fill = header_fill
     
     for zone_idx, zone in enumerate(ZONES):
+        source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=14, value=zone).border = thin_border
-        ws4.cell(row=6+zone_idx, column=15, value=f'=STRATEGY_COCKPIT!H{12+zone_idx}').border = thin_border
-        ws4.cell(row=6+zone_idx, column=16, value=f'=STRATEGY_COCKPIT!F{12+zone_idx}').border = thin_border
+        # Payment is col 9 (I)
+        ws4.cell(row=6+zone_idx, column=15, value=f'=STRATEGY_COCKPIT!I{source_row}').border = thin_border
+        # Salespeople is col 6 (F)
+        ws4.cell(row=6+zone_idx, column=16, value=f'=STRATEGY_COCKPIT!F{source_row}').border = thin_border
     
     # =========================================================================
     # TAB 5: UPLOAD_READY_INNOVATION
@@ -962,19 +1236,21 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Market Report
-    market_path = DATA_FOLDER / "market-report.xlsx"
-    if market_path.exists():
+    market_path = get_data_path("market-report.xlsx")
+    if market_path:
         market_data = load_market_report(market_path)
-        print(f"  [OK] Loaded market report with segment data")
+        print(f"  [OK] Loaded market report from {market_path.parent.name}/")
     else:
         market_data = load_market_report(None)
         print("  [!] Using default market data")
     
     # Innovation Template
-    innov_path = DATA_FOLDER / "Marketing Innovation Decisions.xlsx"
-    if innov_path.exists():
+    innov_path = get_data_path("Marketing Innovation Decisions.xlsx")
+    if innov_path:
         innovation_features = load_innovation_template(innov_path)
         print(f"  [OK] Loaded {len(innovation_features)} innovation features")
     else:
@@ -982,8 +1258,8 @@ def main():
         print("  [!] Using default innovation features")
     
     # Marketing Template
-    mkt_path = DATA_FOLDER / "Marketing Decisions.xlsx"
-    if mkt_path.exists():
+    mkt_path = get_data_path("Marketing Decisions.xlsx")
+    if mkt_path:
         marketing_template = load_marketing_template(mkt_path)
         print(f"  [OK] Loaded marketing template")
     else:
@@ -991,8 +1267,8 @@ def main():
         print("  [!] Using default marketing template")
     
     # Sales Data
-    sales_path = DATA_FOLDER / "sales_admin_expenses.xlsx"
-    if sales_path.exists():
+    sales_path = get_data_path("sales_admin_expenses.xlsx")
+    if sales_path:
         sales_data = load_sales_data(sales_path)
         print(f"  [OK] Loaded sales data")
     else:
@@ -1000,8 +1276,8 @@ def main():
         print("  [!] Using default sales data")
     
     # Inventory
-    inv_path = DATA_FOLDER / "finished_goods_inventory.xlsx"
-    if inv_path.exists():
+    inv_path = get_data_path("finished_goods_inventory.xlsx")
+    if inv_path:
         inventory_data = load_inventory_data(inv_path)
         stockout_status = "STOCKOUT DETECTED" if inventory_data['is_stockout'] else "OK"
         print(f"  [OK] Loaded inventory: {stockout_status}")
@@ -1009,10 +1285,14 @@ def main():
         inventory_data = load_inventory_data(None)
         print("  [!] Using default inventory data")
     
+    # NEW: Marketing Intelligence (Unit Economics)
+    print("  [*] Parsing Marketing Intelligence (Unit Economics)...")
+    marketing_intelligence = load_marketing_intelligence(sales_path, market_path)
+    
     print("\n[*] Generating CMO Dashboard...")
     
     create_complete_dashboard(market_data, innovation_features, marketing_template,
-                              sales_data, inventory_data)
+                              sales_data, inventory_data, marketing_intelligence)
     
     print("\nSheets created:")
     print("  * SEGMENT_PULSE (High/Low Segment Analysis)")

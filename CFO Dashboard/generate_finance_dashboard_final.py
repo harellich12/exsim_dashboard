@@ -15,20 +15,57 @@ from openpyxl.utils import get_column_letter
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.chart import LineChart, BarChart, Reference, Series
 import warnings
+import sys
+
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).parent.parent))
+try:
+    from case_parameters import FINANCIAL
+except ImportError:
+    print("Warning: Could not import case_parameters.py. Using defaults.")
+    FINANCIAL = {}
 
 warnings.filterwarnings('ignore')
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
-DATA_FOLDER = Path("data")
+
+# Required input files from centralized Reports folder
+REQUIRED_FILES = [
+    'initial_cash_flow.xlsx',
+    'results_and_balance_statements.xlsx',
+    'sales_admin_expenses.xlsx',
+    'accounts_receivable_payable.xlsx',
+    'Finance Decisions.xlsx'
+]
+
+# Data source: Primary = Reports folder at project root, Fallback = local /data
+# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
+import os
+REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
+LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+
+def get_data_path(filename):
+    """Get data file path, checking Reports folder first, then local fallback."""
+    primary = REPORTS_FOLDER / filename
+    fallback = LOCAL_DATA_FOLDER / filename
+    if primary.exists():
+        return primary
+    elif fallback.exists():
+        return fallback
+    return None
+
 OUTPUT_FILE = "Finance_Dashboard_Final.xlsx"
 
 FORTNIGHTS = list(range(1, 9))  # 1-8
 
 # Default financial parameters
-DEFAULT_INTEREST_RATE = 0  # Was 0.08
-DEFAULT_TAX_RATE = 0  # Was 0.30
+DEF_LOANS = FINANCIAL.get('LOANS', {})
+ST_LIMIT = DEF_LOANS.get('SHORT_TERM', {}).get('LIMIT', 500000)
+LT_LIMIT = DEF_LOANS.get('LONG_TERM', {}).get('LIMIT', 2000000)
+DEFAULT_INTEREST_RATE = DEF_LOANS.get('SHORT_TERM', {}).get('INTEREST_RATE_ANNUAL', 0.08)
+DEFAULT_TAX_RATE = FINANCIAL.get('TAX_RATE', 0.25)
 
 
 # =============================================================================
@@ -237,11 +274,159 @@ def load_finance_template(filepath):
 
 
 # =============================================================================
+# HARD DATA LOADERS - NEW PRECISE EXTRACTORS
+# =============================================================================
+
+def load_machine_depreciation(filepath):
+    """
+    Extract Period Amortization / Leasing from machine_spaces.xlsx.
+    Sum to get total depreciation expense.
+    """
+    if filepath is None or not filepath.exists():
+        return 0.0
+    
+    try:
+        df = pd.read_excel(filepath, header=None)
+        
+        # Find column with "Period Amortization"
+        for idx, row in df.iterrows():
+            values = [str(v).strip() if pd.notna(v) else "" for v in row]
+            if any("Period Amortization" in v or "Amortization" in v for v in values):
+                # Found header row - get column index
+                amort_col = None
+                for col_idx, val in enumerate(values):
+                    if "Period Amortization" in val or "Amortization" in val:
+                        amort_col = col_idx
+                        break
+                
+                if amort_col:
+                    total = 0.0
+                    for offset in range(1, 15):
+                        if idx + offset < len(df):
+                            data_row = df.iloc[idx + offset]
+                            machine = str(data_row.iloc[0]).strip() if pd.notna(data_row.iloc[0]) else ""
+                            if "Total" in machine and any(m in machine for m in ["M1", "M2", "M3", "M4"]):
+                                total += parse_numeric(data_row.iloc[amort_col])
+                    return total
+                break
+    except Exception as e:
+        print(f"  [!] Error in load_machine_depreciation: {e}")
+    
+    return 0.0
+
+
+def load_initial_cash_precise(filepath):
+    """
+    Extract exact "Final cash (at the start of the first fortnight)" value.
+    This is the TRUE starting cash for FN1.
+    """
+    if filepath is None or not filepath.exists():
+        return 0.0
+    
+    try:
+        df = pd.read_excel(filepath, header=None)
+        
+        for idx, row in df.iterrows():
+            label = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            if "Final cash" in label and "start of the first fortnight" in label:
+                return parse_numeric(row.iloc[1]) if len(row) > 1 else 0.0
+        
+        # Fallback: look for just "Final cash"
+        for idx, row in df.iterrows():
+            label = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            if "Final cash" in label:
+                return parse_numeric(row.iloc[1]) if len(row) > 1 else 0.0
+                
+    except Exception as e:
+        print(f"  [!] Error in load_initial_cash_precise: {e}")
+    
+    return 0.0
+
+
+def load_hard_schedule_precise(filepath):
+    """
+    Extract Receivables and Payables for Fortnights 1-8.
+    Returns dict: {1: {'receivables': x, 'payables': y}, ...}
+    """
+    data = {fn: {'receivables': 0.0, 'payables': 0.0} for fn in range(1, 9)}
+    
+    if filepath is None or not filepath.exists():
+        return data
+    
+    try:
+        df = pd.read_excel(filepath, header=None)
+        
+        # Find header row with "Fortnight", "Receivables", "Payables"
+        for idx, row in df.iterrows():
+            values = [str(v).strip() if pd.notna(v) else "" for v in row]
+            if "Fortnight" in values:
+                rec_col = None
+                pay_col = None
+                for col_idx, val in enumerate(values):
+                    if "Receivables" in val:
+                        rec_col = col_idx
+                    if "Payables" in val:
+                        pay_col = col_idx
+                
+                # Extract data for FN 1-8
+                for fn in range(1, 9):
+                    if idx + fn < len(df):
+                        data_row = df.iloc[idx + fn]
+                        fn_val = int(parse_numeric(data_row.iloc[0]))
+                        if fn_val == fn:
+                            if rec_col is not None:
+                                data[fn]['receivables'] = parse_numeric(data_row.iloc[rec_col])
+                            if pay_col is not None:
+                                data[fn]['payables'] = parse_numeric(data_row.iloc[pay_col])
+                break
+                
+    except Exception as e:
+        print(f"  [!] Error in load_hard_schedule_precise: {e}")
+    
+    return data
+
+
+def load_retained_earnings(filepath):
+    """
+    Extract Retained Earnings from results_and_balance_statements.xlsx.
+    This is the max dividend capacity.
+    """
+    if filepath is None or not filepath.exists():
+        return 0.0
+    
+    try:
+        df = pd.read_excel(filepath, header=None)
+        
+        for idx, row in df.iterrows():
+            label = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            if "Retained Earnings" in label:
+                # Check columns for the value
+                for col_idx in range(1, min(10, len(row))):
+                    val = parse_numeric(row.iloc[col_idx])
+                    if val != 0:
+                        return val
+                        
+    except Exception as e:
+        print(f"  [!] Error in load_retained_earnings: {e}")
+    
+    return 0.0
+
+
+# =============================================================================
 # EXCEL GENERATION
 # =============================================================================
 
-def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data):
-    """Create the Finance Dashboard."""
+def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data, hard_data=None):
+    """Create the Finance Dashboard with Hard Data injection."""
+    
+    # Handle missing hard_data
+    if hard_data is None:
+        hard_data = {
+            'depreciation': 0,
+            'starting_cash': 0,
+            'schedule': {fn: {'receivables': 0, 'payables': 0} for fn in range(1, 9)},
+            'retained_earnings': 0
+        }
     
     wb = Workbook()
     
@@ -256,6 +441,8 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     ref_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
     red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
     green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    # NEW: Hard data fill - gray background for read-only hard data
+    hard_data_fill = PatternFill(start_color="B4B4B4", end_color="B4B4B4", fill_type="solid")
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
@@ -298,12 +485,19 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     cell.fill = input_fill
     cell.number_format = '$#,##0'
     
-    ws1.cell(row=9, column=1, value="STARTING CASH FOR FN1").font = Font(bold=True)
-    cell = ws1.cell(row=9, column=2, value="=B5-B6-B7-B8")
+    ws1.cell(row=9, column=1, value="STARTING CASH FOR FN1 (HARD)").font = Font(bold=True)
+    # Use hard_data starting cash if available, otherwise formula
+    starting_cash_value = hard_data.get('starting_cash', 0)
+    if starting_cash_value > 0:
+        cell = ws1.cell(row=9, column=2, value=starting_cash_value)
+        cell.fill = hard_data_fill  # Gray = read-only hard data
+    else:
+        cell = ws1.cell(row=9, column=2, value="=B5-B6-B7-B8")
+        cell.fill = output_fill
     cell.border = thin_border
-    cell.fill = output_fill
     cell.font = Font(bold=True)
     cell.number_format = '$#,##0'
+    ws1.cell(row=9, column=3, value="← From initial_cash_flow.xlsx").font = Font(italic=True, color="666666")
     
     # Section B: Operational Cash Flow
     row = 12
@@ -321,12 +515,14 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     row += 1
     
     # Opening Cash
-    # Note: We need ending_cash_row which is defined later, so we pre-calculate it
-    # Layout from open_cash_row (15):
+    # The offset calculation needs to account for ALL rows between open_cash_row and ending_cash_row.
+    # After adding Debt Capacity rows, the offset has increased.
+    # Layout from open_cash_row:
     #   +1 Sales, +2 Procurement, +3 S&A, +4 Receivables, +5 Payables
-    #   +6 gap, +7 Section C header, +8 Credit, +9 Invest, +10 Mortgage, +11 Dividends
-    #   +12 gap, +13 Section D header, +14 Net Flow, +15 Ending Cash
-    ending_cash_offset = 15  # open_cash_row + 15 = ending_cash_row
+    #   +6 gap, +7 gap (extra), +8 Section C header, +9 Credit, +10 ST Debt Balance
+    #   +11 Investments, +12 Mortgage, +13 Dividends, +14 gap
+    #   +15 Section D header, +16 Net Flow, +17 Ending Cash
+    ending_cash_offset = 18  # Updated: open_cash_row + 18 = ending_cash_row
     
     ws1.cell(row=row, column=1, value="Opening Cash").border = thin_border
     open_cash_row = row
@@ -375,28 +571,47 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     sa_row = row
     row += 1
     
-    # Receivables
-    ws1.cell(row=row, column=1, value="Receivables (Hard)").border = thin_border
+    # Receivables - inject HARD DATA
+    ws1.cell(row=row, column=1, value="Receivables (HARD)").border = thin_border
     recv_row = row
     for fn in FORTNIGHTS:
-        cell = ws1.cell(row=row, column=1+fn, value=ar_ap_data['receivables'][fn-1])
+        # Use hard_data schedule if available
+        hard_recv = hard_data.get('schedule', {}).get(fn, {}).get('receivables', 0)
+        if hard_recv > 0:
+            cell = ws1.cell(row=row, column=1+fn, value=hard_recv)
+            cell.fill = hard_data_fill  # Gray = read-only
+        else:
+            cell = ws1.cell(row=row, column=1+fn, value=ar_ap_data['receivables'][fn-1])
+            cell.fill = ref_fill
         cell.border = thin_border
-        cell.fill = ref_fill
         cell.number_format = '$#,##0'
     row += 1
     
-    # Payables
-    ws1.cell(row=row, column=1, value="Payables (Hard)").border = thin_border
+    # Payables - inject HARD DATA
+    ws1.cell(row=row, column=1, value="Payables (HARD)").border = thin_border
     pay_row = row
     for fn in FORTNIGHTS:
-        cell = ws1.cell(row=row, column=1+fn, value=ar_ap_data['payables'][fn-1])
+        # Use hard_data schedule if available (as negative for outflow)
+        hard_pay = hard_data.get('schedule', {}).get(fn, {}).get('payables', 0)
+        if hard_pay > 0:
+            cell = ws1.cell(row=row, column=1+fn, value=-hard_pay)  # Negative = outflow
+            cell.fill = hard_data_fill  # Gray = read-only
+        else:
+            cell = ws1.cell(row=row, column=1+fn, value=ar_ap_data['payables'][fn-1])
+            cell.fill = ref_fill
         cell.border = thin_border
-        cell.fill = ref_fill
         cell.number_format = '$#,##0'
+    row += 2
+    
     row += 2
     
     # Section C: Financing Decisions
     ws1.cell(row=row, column=1, value="SECTION C: FINANCING DECISIONS").font = section_font
+    
+    # NEW: Debt Capacity Meter (Header)
+    ws1.cell(row=row, column=3, value="DEBT CAPACITY (Short Term)").font = Font(bold=True)
+    ws1.cell(row=row, column=4, value=f"Limit: ${ST_LIMIT:,.0f}").font = Font(italic=True)
+    
     row += 1
     
     ws1.cell(row=row, column=1, value="Change in Credit Line (+/-)").border = thin_border
@@ -406,7 +621,29 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
         cell.border = thin_border
         cell.fill = input_fill
         cell.number_format = '$#,##0'
+        
+        # Validation: Flag if exceeds limit (simplified check: assume starting 0 used)
+        # Real check needs cumulative balance. 
+        # For now, just add a tip/warning if input > 500k.
+        # Ideally, we track 'Short Term Debt Balance' row.
+    
+    # Add ST Debt Balance Row (Hidden calculation or explicit?)
+    # Let's add it explicitly to track capacity.
     row += 1
+    ws1.cell(row=row, column=1, value="Proj. ST Debt Balance").font = Font(italic=True)
+    balance_st_row = row
+    for fn in FORTNIGHTS:
+        col_let = get_column_letter(1+fn)
+        prev_bal = 0 if fn == 1 else f"{get_column_letter(fn)}{row}" # Simplified: assumes 0 start or hardcoded start
+        # Formula: Previous + New Borrowing
+        ws1.cell(row=row, column=1+fn, value=f"={prev_bal}+{col_let}{credit_row}").number_format = '$#,##0'
+        
+        # Conditional Format for Limit
+        # Red if > Limit
+        
+    row += 1
+    
+
     
     ws1.cell(row=row, column=1, value="Change in Investments (+/-)").border = thin_border
     invest_row = row
@@ -611,19 +848,27 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     sa_expense_row = row
     row += 1
     
-    # Depreciation
-    ws2.cell(row=row, column=1, value="Depreciation").border = thin_border
+    # Depreciation - inject HARD DATA from machine_spaces.xlsx
+    ws2.cell(row=row, column=1, value="Depreciation (HARD)").border = thin_border
     ws2.cell(row=row, column=2, value=balance_data.get('depreciation', 0)).border = thin_border
     ws2['B' + str(row)].fill = ref_fill
     ws2['B' + str(row)].number_format = '$#,##0'
-    cell = ws2.cell(row=row, column=3, value=balance_data.get('depreciation', 0))
+    # Use hard_data depreciation if available
+    hard_depr = hard_data.get('depreciation', 0)
+    if hard_depr > 0:
+        cell = ws2.cell(row=row, column=3, value=hard_depr)
+        cell.fill = hard_data_fill  # Gray = read-only hard data
+    else:
+        cell = ws2.cell(row=row, column=3, value=balance_data.get('depreciation', 0))
+        cell.fill = input_fill
     cell.border = thin_border
-    cell.fill = input_fill
     cell.number_format = '$#,##0'
     cell = ws2.cell(row=row, column=4, value=f"=IF(B{row}>0,(C{row}-B{row})/B{row},0)")
     cell.border = thin_border
     cell.fill = calc_fill
     cell.number_format = '0.0%'
+    # Add note about data source
+    ws2.cell(row=row, column=5, value="← Auto-calc from machine_spaces.xlsx").font = Font(italic=True, color="666666")
     depreciation_row = row
     row += 1
     
@@ -898,6 +1143,44 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     ws4.cell(row=row, column=2, value="=SUM(B6:B8)").fill = calc_fill
     ws4.cell(row=row, column=6, value="=SUM(F6:F8)").fill = calc_fill
     
+    # === DIVIDEND CONTROL SECTION ===
+    row = 13
+    ws4.cell(row=row, column=1, value="DIVIDEND CONTROL").font = section_font
+    row += 1
+    
+    # Max Dividend Capacity (HARD from retained earnings)
+    ws4.cell(row=row, column=1, value="Max Dividend Capacity (HARD)").border = thin_border
+    hard_retained = hard_data.get('retained_earnings', 0)
+    cell = ws4.cell(row=row, column=2, value=hard_retained)
+    cell.border = thin_border
+    cell.fill = hard_data_fill  # Gray = read-only
+    cell.number_format = '$#,##0'
+    ws4.cell(row=row, column=3, value="← Retained Earnings from balance sheet").font = Font(italic=True, color="666666")
+    max_div_row = row
+    row += 1
+    
+    # User Dividend Input
+    ws4.cell(row=row, column=1, value="User Dividend Input").border = thin_border
+    cell = ws4.cell(row=row, column=2, value=0)
+    cell.border = thin_border
+    cell.fill = input_fill
+    cell.number_format = '$#,##0'
+    user_div_row = row
+    row += 1
+    
+    # Dividend Status
+    ws4.cell(row=row, column=1, value="Dividend Status").border = thin_border
+    cell = ws4.cell(row=row, column=2, value=f'=IF(B{user_div_row}>B{max_div_row},"❌ ILLEGAL: Exceeds Retained Earnings","✓ LEGAL")')
+    cell.border = thin_border
+    row += 1
+    
+    # Conditional format: Turn dividend input RED if > max capacity
+    red_rule = FormulaRule(
+        formula=[f'$B${user_div_row}>$B${max_div_row}'],
+        fill=red_fill
+    )
+    ws4.conditional_formatting.add(f'B{user_div_row}', red_rule)
+    
     # Column widths
     for col in range(1, 7):
         ws4.column_dimensions[get_column_letter(col)].width = 18
@@ -996,37 +1279,39 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
+    print(f"    Primary source: {REPORTS_FOLDER}")
+    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
     
     # Initial Cash Flow
-    cash_path = DATA_FOLDER / "initial_cash_flow.xlsx"
-    if cash_path.exists():
+    cash_path = get_data_path("initial_cash_flow.xlsx")
+    if cash_path:
         cash_data = load_initial_cash_flow(cash_path)
-        print(f"  [OK] Loaded initial cash: ${cash_data['final_cash']:,.0f}")
+        print(f"  [OK] Loaded initial cash from {cash_path.parent.name}/")
     else:
         cash_data = load_initial_cash_flow(None)
         print("  [!] Using default cash data")
     
     # Balance Statements
-    balance_path = DATA_FOLDER / "results_and_balance_statements.xlsx"
-    if balance_path.exists():
+    balance_path = get_data_path("results_and_balance_statements.xlsx")
+    if balance_path:
         balance_data = load_balance_statements(balance_path)
-        print(f"  [OK] Loaded balance: Assets=${balance_data['total_assets']:,.0f}")
+        print(f"  [OK] Loaded balance data")
     else:
         balance_data = load_balance_statements(None)
         print("  [!] Using default balance data")
     
     # S&A Expenses
-    sa_path = DATA_FOLDER / "sales_admin_expenses.xlsx"
-    if sa_path.exists():
+    sa_path = get_data_path("sales_admin_expenses.xlsx")
+    if sa_path:
         sa_data = load_sales_admin_expenses(sa_path)
-        print(f"  [OK] Loaded S&A expenses: ${sa_data['total_sa_expenses']:,.0f}")
+        print(f"  [OK] Loaded S&A expenses")
     else:
         sa_data = load_sales_admin_expenses(None)
         print("  [!] Using default S&A data")
     
     # Receivables/Payables
-    ar_ap_path = DATA_FOLDER / "accounts_receivable_payable.xlsx"
-    if ar_ap_path.exists():
+    ar_ap_path = get_data_path("accounts_receivable_payable.xlsx")
+    if ar_ap_path:
         ar_ap_data = load_receivables_payables(ar_ap_path)
         print(f"  [OK] Loaded AR/AP data")
     else:
@@ -1034,16 +1319,59 @@ def main():
         print("  [!] Using default AR/AP data")
     
     # Template
-    template_path = DATA_FOLDER / "Finance Decisions.xlsx"
+    template_path = get_data_path("Finance Decisions.xlsx")
     template_data = load_finance_template(template_path)
     if template_data['exists']:
         print(f"  [OK] Loaded finance template")
     else:
         print("  [!] Using default template layout")
     
+    # === NEW: HARD DATA LOADERS ===
+    print("\n[*] Loading HARD DATA for injection...")
+    
+    # Machine Depreciation
+    machine_path = get_data_path("machine_spaces.xlsx")
+    if machine_path:
+        hard_depreciation = load_machine_depreciation(machine_path)
+        print(f"  [HARD] Depreciation: ${hard_depreciation:,.0f} (from machine_spaces.xlsx)")
+    else:
+        hard_depreciation = 0.0
+        print("  [!] No machine_spaces.xlsx - using 0 for depreciation")
+    
+    # Precise Starting Cash
+    if cash_path:
+        hard_starting_cash = load_initial_cash_precise(cash_path)
+        print(f"  [HARD] Starting Cash FN1: ${hard_starting_cash:,.0f}")
+    else:
+        hard_starting_cash = 0.0
+    
+    # Precise AR/AP Schedule
+    if ar_ap_path:
+        hard_schedule = load_hard_schedule_precise(ar_ap_path)
+        total_rec = sum(d['receivables'] for d in hard_schedule.values())
+        total_pay = sum(d['payables'] for d in hard_schedule.values())
+        print(f"  [HARD] Receivables: ${total_rec:,.0f} | Payables: ${total_pay:,.0f}")
+    else:
+        hard_schedule = {fn: {'receivables': 0, 'payables': 0} for fn in range(1, 9)}
+    
+    # Retained Earnings (for dividend limit)
+    if balance_path:
+        hard_retained_earnings = load_retained_earnings(balance_path)
+        print(f"  [HARD] Retained Earnings (Dividend Limit): ${hard_retained_earnings:,.0f}")
+    else:
+        hard_retained_earnings = 0.0
+    
+    # Bundle hard data
+    hard_data = {
+        'depreciation': hard_depreciation,
+        'starting_cash': hard_starting_cash,
+        'schedule': hard_schedule,
+        'retained_earnings': hard_retained_earnings
+    }
+    
     print("\n[*] Generating Finance Dashboard...")
     
-    create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data)
+    create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data, hard_data)
     
     print("\nSheets created:")
     print("  * LIQUIDITY_MONITOR (Cash Flow Engine)")
