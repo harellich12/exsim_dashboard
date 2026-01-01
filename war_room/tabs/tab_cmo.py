@@ -255,9 +255,9 @@ def render_segment_pulse():
                 'Zone': zone,
                 'My Market Share': f"{market_share:.1f}%",
                 'Est. Demand': f"{est_demand:,.0f}",
-                'Awareness Gap': awareness_gap,
+                'Awareness Gap': f"{awareness_gap:.2f}",
                 'Price Gap': f"{price_gap:.1f}%",
-                'Attractiveness': attractiveness,
+                'Attractiveness': f"{attractiveness:.2f}",
                 'Allocation Flag': flag
             })
         
@@ -710,11 +710,11 @@ def render_cmo_tab():
     
     # 5 SUBTABS - Matching Excel sheets exactly
     subtabs = st.tabs([
-        "📊 SEGMENT_PULSE",
-        "🔬 INNOVATION_LAB", 
-        "🎯 STRATEGY_COCKPIT",
-        "📤 UPLOAD_MARKETING",
-        "📤 UPLOAD_INNOVATION"
+        "📊 Segment Pulse",
+        "🔬 Innovation Lab", 
+        "🎯 Strategy Cockpit",
+        "📤 Upload Marketing",
+        "📤 Upload Innovation"
     ])
     
     with subtabs[0]:
