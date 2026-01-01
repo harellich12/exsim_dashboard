@@ -292,7 +292,7 @@ def render_liquidity_monitor():
     gb = GridOptionsBuilder.from_dataframe(results_df)
     gb.configure_column('Fortnight', editable=False, width=80)
     gb.configure_column('Opening', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()")
-    gb.configure_column('Net_Flow', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()")
+    gb.configure_column('Net_Flow', headerName='Net Flow', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()")
     gb.configure_column('Closing', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()", cellStyle=closing_js)
     gb.configure_column('Status', editable=False, width=130, cellStyle=status_js)
     
@@ -386,10 +386,10 @@ def render_profit_control():
     """)
     
     gb = GridOptionsBuilder.from_dataframe(income_data)
-    gb.configure_column('Line_Item', editable=False, width=180)
-    gb.configure_column('Last_Round', editable=False, width=150, 
+    gb.configure_column('Line_Item', headerName='Line Item', editable=False, width=180)
+    gb.configure_column('Last_Round', headerName='Last Round', editable=False, width=150, 
                        valueFormatter="'$' + value.toLocaleString()", cellStyle=REF_STYLE)
-    gb.configure_column('This_Round', editable=True, width=150,
+    gb.configure_column('This_Round', headerName='This Round', editable=True, width=150,
                        valueFormatter="'$' + value.toLocaleString()", cellStyle=EDITABLE_STYLE)
     gb.configure_column('Variance', editable=False, width=120,
                        valueFormatter="(value * 100).toFixed(1) + '%'", cellStyle=variance_js)
