@@ -10,7 +10,9 @@ from utils.state_manager import set_state
 from utils.data_loader import (
     load_market_report, load_workers_balance, load_raw_materials,
     load_finished_goods, load_balance_statements, load_esg_report,
-    load_production_data
+    load_production_data, load_sales_admin_expenses, load_subperiod_cash_flow,
+    load_accounts_receivable_payable, load_financial_statements_summary,
+    load_initial_cash_flow, load_logistics_data, load_machine_spaces
 )
 
 # Expected filenames and their mappings
@@ -56,6 +58,50 @@ EXPECTED_FILES = {
         'loader': load_balance_statements,
         'tab': 'CFO (Finance)',
         'description': 'P&L, balance sheet, cash positions'
+    },
+    # NEW: Additional CFO/Finance files
+    'sales_admin_expenses.xlsx': {
+        'state_key': 'sales_admin_data',
+        'loader': load_sales_admin_expenses,
+        'tab': 'CFO (Finance)',
+        'description': 'Sales & administrative expense breakdown'
+    },
+    'subperiod_cash_flow.xlsx': {
+        'state_key': 'subperiod_cash_data',
+        'loader': load_subperiod_cash_flow,
+        'tab': 'CFO (Finance)',
+        'description': 'Cash flow by fortnight'
+    },
+    'accounts_receivable_payable.xlsx': {
+        'state_key': 'ar_ap_data',
+        'loader': load_accounts_receivable_payable,
+        'tab': 'CFO (Finance)',
+        'description': 'Accounts receivable and payable'
+    },
+    'financial_statements_summary.xlsx': {
+        'state_key': 'financial_summary_data',
+        'loader': load_financial_statements_summary,
+        'tab': 'CFO (Finance)',
+        'description': 'Summary P&L and key financials'
+    },
+    'initial_cash_flow.xlsx': {
+        'state_key': 'initial_cash_data',
+        'loader': load_initial_cash_flow,
+        'tab': 'CFO (Finance)',
+        'description': 'Opening cash and credit positions'
+    },
+    # NEW: Logistics and Production files
+    'logistics.xlsx': {
+        'state_key': 'logistics_data',
+        'loader': load_logistics_data,
+        'tab': 'Logistics',
+        'description': 'Shipping costs and warehouse data'
+    },
+    'machine_spaces.xlsx': {
+        'state_key': 'machine_spaces_data',
+        'loader': load_machine_spaces,
+        'tab': 'Production',
+        'description': 'Machine capacity by zone'
     }
 }
 
@@ -151,7 +197,7 @@ def render_bulk_upload():
             st.success(f"**{len(results['loaded'])} files loaded successfully!**")
             
             loaded_df = pd.DataFrame(results['loaded'])
-            st.dataframe(loaded_df, use_container_width=True, hide_index=True)
+            st.dataframe(loaded_df, width='stretch', hide_index=True)
         
         if results['skipped']:
             st.warning("**Skipped files (unrecognized names):**")
@@ -167,7 +213,7 @@ def render_bulk_upload():
         st.markdown("---")
         
         if results['loaded']:
-            if st.button("🚀 Apply Data to All Tabs", type="primary", use_container_width=True):
+            if st.button("🚀 Apply Data to All Tabs", type="primary", width='stretch'):
                 # Reset tab initialization to force reload with new data
                 reset_tab_states()
                 st.success("✅ Data applied! Navigate to any tab to see the populated data.")

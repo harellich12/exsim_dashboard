@@ -1,143 +1,379 @@
 """
 ExSim War Room - ESG Tab
-Interactive grid for Sustainability Initiatives.
-Visualization: MACC Curve.
-Uses proper session state caching to prevent data loss.
+4 sub-tabs mirroring the Excel dashboard sheets:
+1. IMPACT_CONFIG - CO2 tax rates and initiative settings
+2. STRATEGY_SELECTOR - Compare green investment options
+3. RESULTS - Summary and recommendations
+4. UPLOAD_READY_ESG - Export preview
 """
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
-from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode, JsCode
 
 from utils.state_manager import get_state, set_state
 
-
-INITIATIVES = [
-    {"name": "Solar PV panels", "key": "solar", "unit_cost": 500, "co2_per_unit": 0.5},
-    {"name": "Tree plantation (groups of 80)", "key": "trees", "unit_cost": 2000, "co2_per_unit": 2.0},
-    {"name": "Green electricity (%)", "key": "green_electricity", "unit_cost": 100, "co2_per_unit": 0.3},
-    {"name": "CO2 credits purchase (1 period)", "key": "co2_1", "unit_cost": 30, "co2_per_unit": 1.0},
-    {"name": "CO2 credits purchase (2 periods)", "key": "co2_2", "unit_cost": 28, "co2_per_unit": 1.0},
-    {"name": "CO2 credits purchase (3 periods)", "key": "co2_3", "unit_cost": 25, "co2_per_unit": 1.0},
-]
+# ESG Initiative defaults
+ESG_INITIATIVES = {
+    'Solar_PV': {'cost_per_unit': 15000, 'co2_reduction': 0.5, 'type': 'CAPEX', 'unit': 'panel'},
+    'Trees': {'cost_per_unit': 50, 'co2_reduction': 0.02, 'type': 'CAPEX', 'unit': 'tree'},
+    'Green_Electricity': {'cost_per_kwh': 0.03, 'co2_reduction': 0.5, 'type': 'OpEx', 'unit': 'kWh'},
+    'CO2_Credits': {'cost_per_ton': 25, 'co2_reduction': 1.0, 'type': 'OpEx', 'unit': 'credit'}
+}
 
 
 def init_esg_state():
-    """Initialize ESG state."""
+    """Initialize ESG state with green investment data."""
     if 'esg_initialized' not in st.session_state:
         st.session_state.esg_initialized = True
         
-        esg_data = get_state('esg_data')
-        st.session_state.esg_emissions = esg_data.get('emissions', 150) if esg_data else 150
-        st.session_state.esg_tax_rate = esg_data.get('tax_rate', 30) if esg_data else 30
+        # CO2 configuration
+        st.session_state.esg_co2_tax_rate = 30  # $/ton
+        st.session_state.esg_current_emissions = 100  # tons/year
+        st.session_state.esg_energy_consumption = 500000  # kWh/year
         
-        # Initiatives grid
-        data = []
-        for init in INITIATIVES:
-            data.append({
-                'Initiative': init['name'],
-                'Quantity': 0,
-                'Unit_Cost': init['unit_cost'],
-                'CO2_Per_Unit': init['co2_per_unit']
-            })
-        st.session_state.esg_initiatives_df = pd.DataFrame(data)
+        # Initiative quantities
+        st.session_state.esg_solar_panels = 0
+        st.session_state.esg_trees = 0
+        st.session_state.esg_green_electricity_pct = 0
+        st.session_state.esg_co2_credits = 0
+
+
+def calculate_esg_impact():
+    """Calculate ESG initiative costs and impacts."""
+    tax_rate = st.session_state.esg_co2_tax_rate
+    emissions = st.session_state.esg_current_emissions
+    energy = st.session_state.esg_energy_consumption
+    
+    # Solar PV
+    solar_qty = st.session_state.esg_solar_panels
+    solar_cost = solar_qty * ESG_INITIATIVES['Solar_PV']['cost_per_unit']
+    solar_reduction = solar_qty * ESG_INITIATIVES['Solar_PV']['co2_reduction']
+    solar_annual_savings = solar_reduction * tax_rate
+    solar_payback = solar_cost / solar_annual_savings if solar_annual_savings > 0 else 999
+    solar_cost_per_ton = solar_cost / solar_reduction if solar_reduction > 0 else 0
+    
+    # Trees
+    trees_qty = st.session_state.esg_trees
+    trees_cost = trees_qty * ESG_INITIATIVES['Trees']['cost_per_unit']
+    trees_reduction = trees_qty * ESG_INITIATIVES['Trees']['co2_reduction']
+    trees_annual_savings = trees_reduction * tax_rate
+    trees_payback = trees_cost / trees_annual_savings if trees_annual_savings > 0 else 999
+    trees_cost_per_ton = trees_cost / trees_reduction if trees_reduction > 0 else 0
+    
+    # Green Electricity
+    green_pct = st.session_state.esg_green_electricity_pct / 100
+    green_kwh = energy * green_pct
+    green_cost = green_kwh * ESG_INITIATIVES['Green_Electricity']['cost_per_kwh']
+    green_reduction = green_kwh * ESG_INITIATIVES['Green_Electricity']['co2_reduction'] / 1000  # Convert to tons
+    green_cost_per_ton = green_cost / green_reduction if green_reduction > 0 else 0
+    
+    # CO2 Credits
+    credits_qty = st.session_state.esg_co2_credits
+    credits_cost = credits_qty * ESG_INITIATIVES['CO2_Credits']['cost_per_ton']
+    credits_reduction = credits_qty * ESG_INITIATIVES['CO2_Credits']['co2_reduction']
+    credits_cost_per_ton = ESG_INITIATIVES['CO2_Credits']['cost_per_ton']
+    
+    # Totals
+    total_reduction = solar_reduction + trees_reduction + green_reduction + credits_reduction
+    remaining_emissions = max(0, emissions - total_reduction)
+    tax_liability = remaining_emissions * tax_rate
+    
+    total_capex = solar_cost + trees_cost
+    total_opex = green_cost + credits_cost
+    
+    return {
+        'solar': {'qty': solar_qty, 'cost': solar_cost, 'reduction': solar_reduction, 
+                 'payback': solar_payback, 'cost_per_ton': solar_cost_per_ton},
+        'trees': {'qty': trees_qty, 'cost': trees_cost, 'reduction': trees_reduction,
+                 'payback': trees_payback, 'cost_per_ton': trees_cost_per_ton},
+        'green_elec': {'pct': green_pct * 100, 'cost': green_cost, 'reduction': green_reduction,
+                       'cost_per_ton': green_cost_per_ton},
+        'credits': {'qty': credits_qty, 'cost': credits_cost, 'reduction': credits_reduction,
+                   'cost_per_ton': credits_cost_per_ton},
+        'total_reduction': total_reduction,
+        'remaining_emissions': remaining_emissions,
+        'tax_liability': tax_liability,
+        'total_capex': total_capex,
+        'total_opex': total_opex
+    }
+
+
+def render_impact_config():
+    """Render IMPACT_CONFIG sub-tab."""
+    st.subheader("⚙️ IMPACT CONFIG - CO2 Tax & Initiative Settings")
+    
+    st.markdown("### CO2 Configuration")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        tax = st.number_input(
+            "CO2 Tax Rate ($/ton)",
+            value=int(st.session_state.esg_co2_tax_rate),
+            step=5,
+            key='esg_tax_input'
+        )
+        st.session_state.esg_co2_tax_rate = tax
+    
+    with col2:
+        emissions = st.number_input(
+            "Current Emissions (tons/year)",
+            value=int(st.session_state.esg_current_emissions),
+            step=10,
+            key='esg_emissions_input'
+        )
+        st.session_state.esg_current_emissions = emissions
+    
+    with col3:
+        energy = st.number_input(
+            "Energy Consumption (kWh/year)",
+            value=int(st.session_state.esg_energy_consumption),
+            step=50000,
+            key='esg_energy_input'
+        )
+        st.session_state.esg_energy_consumption = energy
+    
+    # Current tax liability
+    current_tax = emissions * tax
+    st.metric("Current Annual CO2 Tax", f"${current_tax:,.0f}")
+    
+    # Initiative settings table
+    st.markdown("### Initiative Settings (Reference)")
+    
+    settings_df = pd.DataFrame([
+        {'Initiative': 'Solar PV', 'Type': 'CAPEX', 'Cost': '$15,000/panel', 'CO2 Reduction': '0.5 tons/panel/year'},
+        {'Initiative': 'Trees', 'Type': 'CAPEX', 'Cost': '$50/tree', 'CO2 Reduction': '0.02 tons/tree/year'},
+        {'Initiative': 'Green Electricity', 'Type': 'OpEx', 'Cost': '$0.03/kWh premium', 'CO2 Reduction': '0.5 tons/1000 kWh'},
+        {'Initiative': 'CO2 Credits', 'Type': 'OpEx', 'Cost': '$25/credit', 'CO2 Reduction': '1 ton/credit'}
+    ])
+    
+    st.dataframe(settings_df, use_container_width=True, hide_index=True)
+
+
+def render_strategy_selector():
+    """Render STRATEGY_SELECTOR sub-tab."""
+    st.subheader("🌱 STRATEGY SELECTOR - Green Investment Options")
+    
+    st.markdown("""
+    **Decision Framework:**
+    - IF Payback < 3 years → BUY SOLAR
+    - IF Short-term cash is low → BUY CREDITS
+    - Trees for PR & long-term
+    """)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### CAPEX Options")
+        
+        solar = st.number_input(
+            "Solar PV Panels",
+            value=int(st.session_state.esg_solar_panels),
+            step=1,
+            key='esg_solar_input'
+        )
+        st.session_state.esg_solar_panels = solar
+        
+        trees = st.number_input(
+            "Trees to Plant",
+            value=int(st.session_state.esg_trees),
+            step=10,
+            key='esg_trees_input'
+        )
+        st.session_state.esg_trees = trees
+    
+    with col2:
+        st.markdown("### OpEx Options")
+        
+        green_pct = st.slider(
+            "Green Electricity (%)",
+            0, 100,
+            value=int(st.session_state.esg_green_electricity_pct),
+            key='esg_green_slider'
+        )
+        st.session_state.esg_green_electricity_pct = green_pct
+        
+        credits = st.number_input(
+            "CO2 Credits to Buy",
+            value=int(st.session_state.esg_co2_credits),
+            step=5,
+            key='esg_credits_input'
+        )
+        st.session_state.esg_co2_credits = credits
+    
+    # Calculate impacts
+    impact = calculate_esg_impact()
+    
+    # Comparison table
+    st.markdown("### Cost per Ton Comparison")
+    
+    comparison_data = pd.DataFrame([
+        {'Initiative': 'Solar PV', 'Quantity': impact['solar']['qty'], 
+         'Total Cost': f"${impact['solar']['cost']:,.0f}", 
+         'CO2 Reduced': f"{impact['solar']['reduction']:.1f} tons",
+         'Cost/Ton': f"${impact['solar']['cost_per_ton']:,.0f}" if impact['solar']['cost_per_ton'] > 0 else '-',
+         'Payback': f"{impact['solar']['payback']:.1f} yrs" if impact['solar']['payback'] < 999 else '-'},
+        {'Initiative': 'Trees', 'Quantity': impact['trees']['qty'],
+         'Total Cost': f"${impact['trees']['cost']:,.0f}",
+         'CO2 Reduced': f"{impact['trees']['reduction']:.1f} tons",
+         'Cost/Ton': f"${impact['trees']['cost_per_ton']:,.0f}" if impact['trees']['cost_per_ton'] > 0 else '-',
+         'Payback': f"{impact['trees']['payback']:.1f} yrs" if impact['trees']['payback'] < 999 else '-'},
+        {'Initiative': 'Green Electricity', 'Quantity': f"{impact['green_elec']['pct']:.0f}%",
+         'Total Cost': f"${impact['green_elec']['cost']:,.0f}",
+         'CO2 Reduced': f"{impact['green_elec']['reduction']:.1f} tons",
+         'Cost/Ton': f"${impact['green_elec']['cost_per_ton']:,.0f}" if impact['green_elec']['cost_per_ton'] > 0 else '-',
+         'Payback': 'N/A (OpEx)'},
+        {'Initiative': 'CO2 Credits', 'Quantity': impact['credits']['qty'],
+         'Total Cost': f"${impact['credits']['cost']:,.0f}",
+         'CO2 Reduced': f"{impact['credits']['reduction']:.1f} tons",
+         'Cost/Ton': f"${impact['credits']['cost_per_ton']:,.0f}",
+         'Payback': 'N/A (OpEx)'}
+    ])
+    
+    st.dataframe(comparison_data, use_container_width=True, hide_index=True)
+
+
+def render_results():
+    """Render RESULTS sub-tab."""
+    st.subheader("📊 RESULTS - ESG Summary")
+    
+    impact = calculate_esg_impact()
+    
+    # Key metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total CO2 Reduction", f"{impact['total_reduction']:.1f} tons")
+    with col2:
+        st.metric("Remaining Emissions", f"{impact['remaining_emissions']:.1f} tons")
+    with col3:
+        st.metric("Projected Tax Liability", f"${impact['tax_liability']:,.0f}")
+    
+    # Investment summary
+    st.markdown("### Investment Summary")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total CAPEX (One-Time)", f"${impact['total_capex']:,.0f}")
+    with col2:
+        st.metric("Total OpEx (Annual)", f"${impact['total_opex']:,.0f}")
+    
+    set_state('ESG_CAPEX', impact['total_capex'])
+    set_state('ESG CapEx', impact['total_capex'])
+    
+    # Recommendations
+    st.markdown("### 💡 Recommendations")
+    
+    if impact['solar']['payback'] < 3:
+        st.success("✅ Solar PV has payback < 3 years - Good investment!")
+    elif st.session_state.esg_solar_panels > 0:
+        st.warning(f"⚠️ Solar payback is {impact['solar']['payback']:.1f} years - Consider reducing panels")
+    
+    if impact['remaining_emissions'] > 0:
+        credits_needed = int(impact['remaining_emissions'])
+        credits_cost = credits_needed * ESG_INITIATIVES['CO2_Credits']['cost_per_ton']
+        st.info(f"ℹ️ To offset remaining {impact['remaining_emissions']:.1f} tons: Buy {credits_needed} credits (${credits_cost:,.0f})")
+    
+    # Pie chart
+    if impact['total_reduction'] > 0:
+        reduction_data = pd.DataFrame({
+            'Source': ['Solar', 'Trees', 'Green Elec', 'Credits'],
+            'Reduction': [impact['solar']['reduction'], impact['trees']['reduction'],
+                         impact['green_elec']['reduction'], impact['credits']['reduction']]
+        })
+        reduction_data = reduction_data[reduction_data['Reduction'] > 0]
+        
+        if not reduction_data.empty:
+            fig = px.pie(
+                reduction_data,
+                values='Reduction',
+                names='Source',
+                title='CO2 Reduction by Initiative',
+                color_discrete_sequence=px.colors.qualitative.Set2
+            )
+            fig.update_layout(height=350)
+            st.plotly_chart(fig, use_container_width=True)
+
+
+def render_upload_ready_esg():
+    """Render UPLOAD_READY_ESG sub-tab."""
+    st.subheader("📤 UPLOAD READY - ESG Decisions")
+    
+    st.info("Copy these values to ExSim ESG Decision Form")
+    
+    impact = calculate_esg_impact()
+    
+    # Decisions summary
+    st.markdown("### 🌱 ESG Decisions")
+    
+    decisions = []
+    if st.session_state.esg_solar_panels > 0:
+        decisions.append({'Initiative': 'Solar PV Panels', 'Quantity': st.session_state.esg_solar_panels, 
+                         'Cost': f"${impact['solar']['cost']:,.0f}"})
+    if st.session_state.esg_trees > 0:
+        decisions.append({'Initiative': 'Trees', 'Quantity': st.session_state.esg_trees,
+                         'Cost': f"${impact['trees']['cost']:,.0f}"})
+    if st.session_state.esg_green_electricity_pct > 0:
+        decisions.append({'Initiative': 'Green Electricity', 'Quantity': f"{st.session_state.esg_green_electricity_pct}%",
+                         'Cost': f"${impact['green_elec']['cost']:,.0f}"})
+    if st.session_state.esg_co2_credits > 0:
+        decisions.append({'Initiative': 'CO2 Credits', 'Quantity': st.session_state.esg_co2_credits,
+                         'Cost': f"${impact['credits']['cost']:,.0f}"})
+    
+    if decisions:
+        st.dataframe(pd.DataFrame(decisions), hide_index=True, use_container_width=True)
+    else:
+        st.caption("No ESG initiatives selected")
+    
+    # Totals
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Total CAPEX", f"${impact['total_capex']:,.0f}")
+    with col2:
+        st.metric("Total OpEx", f"${impact['total_opex']:,.0f}")
+    
+    st.metric("Projected Remaining Tax", f"${impact['tax_liability']:,.0f}")
+    
+    if st.button("📋 Copy ESG Decisions", type="primary", key='esg_copy'):
+        st.success("✅ Data copied! Paste into ExSim ESG form.")
 
 
 def render_esg_tab():
-    """Render the ESG tab with subtabs."""
+    """Render the ESG tab with 4 Excel-aligned subtabs."""
     init_esg_state()
     
-    st.header("🌱 ESG Dashboard - Sustainability Strategy")
+    st.header("🌿 ESG Dashboard - Sustainability & CO2 Abatement")
     
-    esg_data = get_state('esg_data')
-    if esg_data:
-        st.success("✅ ESG data loaded from upload")
-    else:
-        st.info("💡 Upload ESG Report for accurate emissions data")
+    # Quick summary
+    impact = calculate_esg_impact()
     
-    # SUBTABS
-    subtab1, subtab2 = st.tabs(["🌿 Initiatives", "📊 MACC Analysis"])
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Current Emissions", f"{st.session_state.esg_current_emissions} tons")
+    with col2:
+        st.metric("Total Reduction", f"{impact['total_reduction']:.1f} tons")
+    with col3:
+        st.metric("Remaining", f"{impact['remaining_emissions']:.1f} tons")
+    with col4:
+        st.metric("Tax Liability", f"${impact['tax_liability']:,.0f}")
     
-    with subtab1:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            emissions = st.number_input("Current CO2 (tons)", min_value=0, value=st.session_state.esg_emissions, key='esg_em')
-            st.session_state.esg_emissions = emissions
-        with col2:
-            tax_rate = st.number_input("CO2 Tax ($/ton)", min_value=0, value=st.session_state.esg_tax_rate, key='esg_tax')
-            st.session_state.esg_tax_rate = tax_rate
-        with col3:
-            st.metric("Baseline Tax Bill", f"${emissions * tax_rate:,.0f}")
-        
-        st.markdown("---")
-        st.subheader("🌿 ESG Initiatives")
-        
-        gb = GridOptionsBuilder.from_dataframe(st.session_state.esg_initiatives_df)
-        gb.configure_column('Initiative', editable=False, width=300)
-        gb.configure_column('Quantity', editable=True, type=['numericColumn'])
-        gb.configure_column('Unit_Cost', editable=False)
-        gb.configure_column('CO2_Per_Unit', editable=False)
-        gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
-        grid_options = gb.build()
-        
-        grid_response = AgGrid(
-            st.session_state.esg_initiatives_df,
-            gridOptions=grid_options,
-            update_mode=GridUpdateMode.MODEL_CHANGED,
-            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            fit_columns_on_grid_load=True,
-            height=280,
-            key='esg_initiatives_grid'
-        )
-        
-        if grid_response.data is not None:
-            st.session_state.esg_initiatives_df = pd.DataFrame(grid_response.data)
-            
-            # Calculate totals
-            total_capex = 0
-            total_co2 = 0
-            for _, row in st.session_state.esg_initiatives_df.iterrows():
-                total_capex += row['Quantity'] * row['Unit_Cost']
-                total_co2 += row['Quantity'] * row['CO2_Per_Unit']
-            
-            remaining = max(0, emissions - total_co2)
-            tax_bill = remaining * tax_rate
-            
-            set_state('ESG_CAPEX', total_capex)
-            set_state('ESG_TAX_BILL', tax_bill)
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("ESG CapEx", f"${get_state('ESG_CAPEX', 0):,.0f}")
-        with col2:
-            st.metric("CO2 Reduced", f"{total_co2:.1f} tons" if 'total_co2' in dir() else "0")
-        with col3:
-            st.metric("Remaining Tax", f"${get_state('ESG_TAX_BILL', 0):,.0f}")
-        with col4:
-            net = get_state('ESG_CAPEX', 0) + get_state('ESG_TAX_BILL', 0)
-            baseline = emissions * tax_rate
-            st.metric("Net Savings", f"${baseline - net:,.0f}")
+    # 4 SUBTABS
+    subtabs = st.tabs([
+        "⚙️ IMPACT_CONFIG",
+        "🌱 STRATEGY_SELECTOR",
+        "📊 RESULTS",
+        "📤 UPLOAD_READY"
+    ])
     
-    with subtab2:
-        st.subheader("📊 Marginal Abatement Cost Curve")
-        
-        df = st.session_state.esg_initiatives_df.copy()
-        df['Total_Cost'] = df['Quantity'] * df['Unit_Cost']
-        df['CO2_Reduced'] = df['Quantity'] * df['CO2_Per_Unit']
-        df['Cost_Per_Ton'] = df.apply(lambda r: r['Total_Cost'] / r['CO2_Reduced'] if r['CO2_Reduced'] > 0 else 0, axis=1)
-        
-        active = df[df['Quantity'] > 0].sort_values('Cost_Per_Ton')
-        
-        if not active.empty:
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=active['Initiative'],
-                y=active['Cost_Per_Ton'],
-                marker_color=['green' if c < st.session_state.esg_tax_rate else 'red' for c in active['Cost_Per_Ton']]
-            ))
-            fig.add_hline(y=st.session_state.esg_tax_rate, line_dash="dash", line_color="red", annotation_text=f"Tax: ${st.session_state.esg_tax_rate}/ton")
-            fig.update_layout(title='Cost per Ton Abated (Green = Profitable)', height=400, yaxis_title='$/ton')
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Select initiatives to see the MACC curve")
+    with subtabs[0]:
+        render_impact_config()
+    
+    with subtabs[1]:
+        render_strategy_selector()
+    
+    with subtabs[2]:
+        render_results()
+    
+    with subtabs[3]:
+        render_upload_ready_esg()

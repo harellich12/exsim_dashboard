@@ -37,6 +37,17 @@ def init_session_state():
         'people_decisions': None,
         'esg_decisions': None,
         'finance_decisions': None,
+        
+        # CMO specific state
+        'cmo_segment_pulse': None,  # Market analysis data from upload
+        'cmo_innovation_decisions': {},  # {feature_name: 0/1}
+        'cmo_strategy_inputs': None,  # DataFrame with editable inputs per zone
+        'cmo_economics': {  # Unit costs for calculations
+            'TV_Cost_Spot': 3000,
+            'Radio_Cost_Spot': 300,
+            'Salary_Per_Person': 1500,
+            'Hiring_Cost': 1100
+        },
     }
     
     for key, default in defaults.items():

@@ -12,7 +12,7 @@ from utils.export_engine import create_decisions_zip
 from utils.data_loader import (
     load_market_report, load_workers_balance, load_raw_materials,
     load_finished_goods, load_balance_statements, load_esg_report,
-    load_production_data
+    load_production_data, load_sales_data
 )
 
 # Import tabs
@@ -89,18 +89,24 @@ with st.sidebar:
         set_state('production_data', load_production_data(prod_file))
         st.success("✓ Production Data")
     
+    # Sales Admin Expenses (for CMO Last Sales)
+    sales_file = st.file_uploader("Sales Admin Expenses", type=['xlsx'], key='sales_upload')
+    if sales_file:
+        set_state('sales_data', load_sales_data(sales_file))
+        st.success("✓ Sales Admin Expenses")
+    
     st.markdown("---")
     
     # Export Button
     st.subheader("📤 Export Decisions")
-    if st.button("Download All Decisions", type="primary", use_container_width=True):
+    if st.button("Download All Decisions", type="primary", width='stretch'):
         zip_data = create_decisions_zip()
         st.download_button(
             label="💾 Save decisions.zip",
             data=zip_data,
             file_name="decisions.zip",
             mime="application/zip",
-            use_container_width=True
+            width='stretch'
         )
 
 # =============================================================================
