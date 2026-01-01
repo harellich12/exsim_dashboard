@@ -248,7 +248,7 @@ def render_zone_calculators():
     
     gb = GridOptionsBuilder.from_dataframe(output_df)
     gb.configure_column('Fortnight', editable=False, width=90)
-    gb.configure_column('Real_Output', editable=False, width=110)
+    gb.configure_column('Real_Output', headerName='Real Output', editable=False, width=110)
     gb.configure_column('Alert', editable=False, width=160, cellStyle=alert_js)
     
     AgGrid(
@@ -282,10 +282,10 @@ def render_resource_mgr():
     
     gb = GridOptionsBuilder.from_dataframe(exp_df)
     gb.configure_column('Zone', editable=False, width=80)
-    gb.configure_column('Buy_Machines', editable=True, width=120, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Buy_Modules', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Transfer_Machines_In', editable=True, width=140, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Transfer_Machines_Out', editable=True, width=150, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Buy_Machines', headerName='Buy Machines', editable=True, width=120, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Buy_Modules', headerName='Buy Modules', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Transfer_Machines_In', headerName='Transfer In', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Transfer_Machines_Out', headerName='Transfer Out', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -418,9 +418,9 @@ def render_production_tab():
     
     # 3 SUBTABS
     subtabs = st.tabs([
-        "🏭 ZONE_CALCULATORS",
-        "⚙️ RESOURCE_MGR",
-        "📤 UPLOAD_READY"
+        "🏭 Zone Calculators",
+        "⚙️ Resource Manager",
+        "📤 Upload Ready"
     ])
     
     with subtabs[0]:

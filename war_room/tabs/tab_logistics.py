@@ -164,10 +164,10 @@ def render_route_config():
     
     gb = GridOptionsBuilder.from_dataframe(wh_df)
     gb.configure_column('Zone', editable=False, width=90, cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Current_Capacity', editable=False, width=130, cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Buy_Modules', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Rent_Modules', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Total_Capacity', editable=False, width=130, cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Current_Capacity', headerName='Current Cap', editable=False, width=130, cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Buy_Modules', headerName='Buy Modules', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Rent_Modules', headerName='Rent Modules', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Total_Capacity', headerName='Total Cap', editable=False, width=130, cellStyle=REFERENCE_STYLE)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -354,7 +354,7 @@ def render_shipment_builder():
     
     gb = GridOptionsBuilder.from_dataframe(ship_df)
     gb.configure_column('ID', editable=False, width=50)
-    gb.configure_column('Order_FN', editable=True, width=90, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Order_FN', headerName='Order FN', editable=True, width=90, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_column('Origin', editable=True, width=90, 
                        cellEditor='agSelectCellEditor', cellEditorParams={'values': ZONES}, cellStyle=EDITABLE_STYLE)
     gb.configure_column('Destination', editable=True, width=100,
@@ -363,8 +363,8 @@ def render_shipment_builder():
     gb.configure_column('Mode', editable=True, width=80,
                        cellEditor='agSelectCellEditor', cellEditorParams={'values': TRANSPORT_MODES}, cellStyle=EDITABLE_STYLE)
     gb.configure_column('Quantity', editable=True, width=90, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Lead_Time', editable=False, width=90)
-    gb.configure_column('Arrival_FN', editable=False, width=90)
+    gb.configure_column('Lead_Time', headerName='Lead Time', editable=False, width=90)
+    gb.configure_column('Arrival_FN', headerName='Arrival FN', editable=False, width=90)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -480,10 +480,10 @@ def render_logistics_tab():
     
     # 4 SUBTABS - Matching Excel sheets exactly
     subtabs = st.tabs([
-        "🛣️ ROUTE_CONFIG",
-        "🧩 INVENTORY_TETRIS",
-        "📦 SHIPMENT_BUILDER",
-        "📤 UPLOAD_READY"
+        "🛣️ Route Config",
+        "🧩 Inventory Tetris",
+        "📦 Shipment Builder",
+        "📤 Upload Ready"
     ])
     
     with subtabs[0]:

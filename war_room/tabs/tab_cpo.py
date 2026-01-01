@@ -169,16 +169,16 @@ def render_workforce_planning():
                                                   'Turnover_Rate', 'Proj_Loss', 'Hire', 'Fire', 
                                                   'Net_Workers', 'Hire_Cost', 'Fire_Cost']])
     gb.configure_column('Zone', editable=False, width=80, cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Current_Workers', editable=False, width=120, cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Required_Workers', editable=True, width=130, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Turnover_Rate', editable=True, width=110, type=['numericColumn'], 
+    gb.configure_column('Current_Workers', headerName='Current', editable=False, width=100, cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Required_Workers', headerName='Required', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Turnover_Rate', headerName='Turnover %', editable=True, width=100, type=['numericColumn'], 
                        valueFormatter="value.toFixed(1) + '%'", cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Proj_Loss', editable=False, width=90, cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Proj_Loss', headerName='Proj Loss', editable=False, width=90, cellStyle=REFERENCE_STYLE)
     gb.configure_column('Hire', editable=True, width=70, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_column('Fire', editable=True, width=70, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Net_Workers', editable=False, width=110, cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Hire_Cost', editable=False, width=100, valueFormatter="'$' + value.toLocaleString()", cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Fire_Cost', editable=False, width=100, valueFormatter="'$' + value.toLocaleString()", cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Net_Workers', headerName='Net Workers', editable=False, width=100, cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Hire_Cost', headerName='Hire Cost', editable=False, width=100, valueFormatter="'$' + value.toLocaleString()", cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Fire_Cost', headerName='Fire Cost', editable=False, width=100, valueFormatter="'$' + value.toLocaleString()", cellStyle=REFERENCE_STYLE)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -267,13 +267,13 @@ def render_compensation_strategy():
     
     gb = GridOptionsBuilder.from_dataframe(wf_df[['Zone', 'Prev_Salary', 'Min_Salary', 'New_Salary', 'Strike_Risk']])
     gb.configure_column('Zone', editable=False, width=90, cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Prev_Salary', editable=False, width=110, 
+    gb.configure_column('Prev_Salary', headerName='Prev Salary', editable=False, width=110, 
                        valueFormatter="'$' + value.toFixed(2)", cellStyle=REFERENCE_STYLE)
-    gb.configure_column('Min_Salary', editable=False, width=110,
+    gb.configure_column('Min_Salary', headerName='Min Salary', editable=False, width=110,
                        valueFormatter="'$' + value.toFixed(2)", cellStyle=REFERENCE_STYLE)
-    gb.configure_column('New_Salary', editable=True, width=110, type=['numericColumn'],
+    gb.configure_column('New_Salary', headerName='New Salary', editable=True, width=110, type=['numericColumn'],
                        valueFormatter="'$' + value.toFixed(2)", cellStyle=salary_js)
-    gb.configure_column('Strike_Risk', editable=False, width=140, cellStyle=strike_js)
+    gb.configure_column('Strike_Risk', headerName='Strike Risk', editable=False, width=140, cellStyle=strike_js)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -466,10 +466,10 @@ def render_cpo_tab():
     
     # 4 SUBTABS - Matching Excel logic
     subtabs = st.tabs([
-        "👷 WORKFORCE_PLANNING",
-        "💰 COMPENSATION_STRATEGY",
-        "📊 LABOR_COST_ANALYSIS",
-        "📤 UPLOAD_READY"
+        "👷 Workforce Planning",
+        "💰 Compensation Strategy",
+        "📊 Labor Cost Analysis",
+        "📤 Upload Ready"
     ])
     
     with subtabs[0]:

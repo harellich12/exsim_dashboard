@@ -136,11 +136,11 @@ def render_supplier_config():
     gb = GridOptionsBuilder.from_dataframe(suppliers_df)
     gb.configure_column('Supplier', editable=False, width=80)
     gb.configure_column('Part', editable=False, width=80)
-    gb.configure_column('Lead_Time', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Lead_Time', headerName='Lead Time', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_column('Cost', editable=True, width=80, type=['numericColumn'], 
                        valueFormatter="'$' + value", cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Payment_Terms', editable=True, width=120, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Batch_Size', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Payment_Terms', headerName='Payment Terms', editable=True, width=120, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Batch_Size', headerName='Batch Size', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -407,11 +407,11 @@ def render_purchasing_tab():
     
     # 5 SUBTABS
     subtabs = st.tabs([
-        "🏪 SUPPLIER_CONFIG",
-        "📊 COST_ANALYSIS",
-        "📦 MRP_ENGINE",
-        "💵 CASH_FLOW_PREVIEW",
-        "📤 UPLOAD_READY"
+        "🏪 Supplier Config",
+        "📊 Cost Analysis",
+        "📦 MRP Engine",
+        "💵 Cash Flow",
+        "📤 Upload Ready"
     ])
     
     with subtabs[0]:

@@ -521,13 +521,13 @@ def render_debt_manager():
                        type=['numericColumn'],
                        valueFormatter="'$' + value.toLocaleString()",
                        cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Interest_Rate', editable=True, width=100,
+    gb.configure_column('Interest_Rate', headerName='Interest Rate', editable=True, width=100,
                        valueFormatter="(value * 100).toFixed(1) + '%'")
-    gb.configure_column('Payment_FN1', editable=True, width=110,
+    gb.configure_column('Payment_FN1', headerName='Payment FN1', editable=True, width=110,
                        type=['numericColumn'],
                        valueFormatter="'$' + value.toLocaleString()",
                        cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Payment_FN2', editable=True, width=110,
+    gb.configure_column('Payment_FN2', headerName='Payment FN2', editable=True, width=110,
                        type=['numericColumn'],
                        valueFormatter="'$' + value.toLocaleString()",
                        cellStyle=EDITABLE_STYLE)
@@ -651,11 +651,11 @@ def render_cfo_tab():
     
     # 5 SUBTABS - Matching Excel sheets exactly
     subtabs = st.tabs([
-        "💧 LIQUIDITY_MONITOR",
-        "📊 PROFIT_CONTROL",
-        "🏦 BALANCE_SHEET_HEALTH",
-        "🏠 DEBT_MANAGER",
-        "📤 UPLOAD_READY"
+        "💧 Liquidity Monitor",
+        "📊 Profit Control",
+        "🏦 Balance Sheet",
+        "🏠 Debt Manager",
+        "📤 Upload Ready"
     ])
     
     with subtabs[0]:

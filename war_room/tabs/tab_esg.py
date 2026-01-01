@@ -360,10 +360,10 @@ def render_esg_tab():
     
     # 4 SUBTABS
     subtabs = st.tabs([
-        "⚙️ IMPACT_CONFIG",
-        "🌱 STRATEGY_SELECTOR",
-        "📊 RESULTS",
-        "📤 UPLOAD_READY"
+        "⚙️ Impact Config",
+        "🌱 Strategy Selector",
+        "📊 Results",
+        "📤 Upload Ready"
     ])
     
     with subtabs[0]:
