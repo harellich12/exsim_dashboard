@@ -240,7 +240,10 @@ def render_segment_pulse():
             attractiveness = seg_data.get('my_attractiveness', zone_data.get('my_attractiveness', 60))
             
             # Allocation flag logic (from Excel)
-            if segment == "High":
+            # First check for zones with no market presence
+            if market_share == 0 or my_awareness == 0:
+                flag = "⚪ NO PRESENCE: Zone Not Active"
+            elif segment == "High":
                 if my_awareness < 30:
                     flag = "🔴 CRITICAL: Boost TV for Allocation"
                 else:
@@ -269,6 +272,8 @@ def render_segment_pulse():
                 return 'background-color: #FFC7CE; color: #9C0006; font-weight: bold'
             elif '🟠' in str(val):
                 return 'background-color: #FFEB9C; color: #9C5700; font-weight: bold'
+            elif '⚪' in str(val):
+                return 'background-color: #D9D9D9; color: #666666; font-weight: bold'
             elif '🟢' in str(val):
                 return 'background-color: #C6EFCE; color: #006100'
             return ''

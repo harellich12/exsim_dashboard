@@ -614,7 +614,11 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             attractiveness = zone_data.get('my_attractiveness', DEFAULT_ATTRACTIVENESS)
             
             # Allocation flag logic
-            if segment == "High":
+            # First check for zones with no market presence
+            if market_share == 0 or my_awareness == 0:
+                flag = "NO PRESENCE: Zone Not Active"
+                flag_fill = ref_fill  # Gray = needs investigation
+            elif segment == "High":
                 if my_awareness < 30:
                     flag = "CRITICAL: Boost TV for Allocation"
                     flag_fill = red_fill
