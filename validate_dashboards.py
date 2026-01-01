@@ -60,7 +60,7 @@ DASHBOARDS = {
         "tests": ["esg_strategy_refs", "upload_ready_links"]
     },
     "Production": {
-        "dir": "Produciton Manager Dashboard",
+        "dir": "Produciton Manager Dashboard", # Known typo in folder name
         "script": "generate_production_dashboard_zones.py",
         "output": "Production_Dashboard_Zones.xlsx",
         "tests": ["zone_calculator_refs", "upload_ready_links"]

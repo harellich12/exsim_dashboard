@@ -151,6 +151,87 @@ class TestCFODashboard(ExSimIntegrityTest):
         self.assertIn("B", str(curr_formula), "Current Debt Ratio should reference Column B")
 
 
+class TestProductionDashboard(ExSimIntegrityTest):
+    FOLDER = "Produciton Manager Dashboard"
+    SCRIPT = "generate_production_dashboard_zones.py"
+    OUTPUT = "Production_Dashboard_Zones.xlsx"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.run_generator(cls.FOLDER, cls.SCRIPT)
+
+    def test_raw_materials_load(self):
+        """Verify Raw Materials (Part A) loaded into Zone Calculators."""
+        source_df = self.load_source_data(self.FOLDER, "raw_materials.xlsx")
+        wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
+        ws = wb["ZONE_CALCULATORS"]
+
+        # Center Zone Part A is usually around row 6 (Material Stock)
+        # We need to find the "Center" block and "Material Stock" row.
+
+        # Approximate check: Center Part A inventory from source
+        expected_inv = 0
+        if source_df is not None:
+            # Logic from generator: Center - Section 1... Part A... Final Inventory (col 8)
+            # The logic in generator is slightly complex: it looks for zone/section header, then Part, then Final Inventory.
+            # Here we just scan for the specific row based on printed debugs or structure knowledge.
+            # In raw_materials.xlsx, row 10 is Final Inventory for Part A in Center - Section 1.
+            # Let's use a more robust search.
+            current_section = ""
+            current_part = ""
+            for _, row in source_df.iterrows():
+                val_str = str(row[0])
+                if "Section" in val_str:
+                    current_section = val_str
+                if "Part A" in val_str:
+                    current_part = "Part A"
+                elif "Part B" in val_str:
+                    current_part = "Part B"
+
+                if "Final inventory" in val_str and "Center" in current_section and current_part == "Part A":
+                     expected_inv = self.parse_numeric(row[8])
+                     break
+
+        # In Dashboard, find Center Zone -> Material Stock
+        actual_inv = 0
+        for row in range(1, 20):
+            if ws.cell(row=row, column=1).value == "Material Stock (Part A)":
+                actual_inv = ws.cell(row=row, column=2).value
+                break
+
+        print(f"Production: Center Part A Inv. Source={expected_inv}, Dashboard={actual_inv}")
+        self.assertEqual(expected_inv, actual_inv, "Part A Inventory mismatch")
+
+    def test_machine_counts(self):
+        """Verify Machine counts loaded from machine_spaces.xlsx."""
+        source_df = self.load_source_data(self.FOLDER, "machine_spaces.xlsx")
+        wb = self.load_dashboard(self.FOLDER, self.OUTPUT)
+        ws = wb["ZONE_CALCULATORS"]
+
+        # Calculate expected total machines (M1+M2+M3+M4)
+        expected_machines = 0
+        if source_df is not None:
+            for _, row in source_df.iterrows():
+                label = str(row[0])
+                if label in ["M1", "M2", "M3-alpha", "M3-beta", "M4"]:
+                    # Iterate columns backwards to find latest count
+                    for i in range(len(row)-1, 0, -1):
+                        val = self.parse_numeric(row[i])
+                        if val > 0:
+                            expected_machines += int(val)
+                            break
+
+        # In Dashboard, find "Machines in Zone" for Center (first occurrence)
+        actual_machines = 0
+        for row in range(1, 20):
+            if ws.cell(row=row, column=1).value == "Machines in Zone":
+                actual_machines = ws.cell(row=row, column=2).value
+                break
+
+        print(f"Production: Total Machines (Center). Source={expected_machines}, Dashboard={actual_machines}")
+        self.assertEqual(expected_machines, actual_machines, "Machine count mismatch")
+
+
 class TestCPODashboard(ExSimIntegrityTest):
     FOLDER = "CPO Dashboard"
     SCRIPT = "generate_cpo_dashboard.py"
