@@ -146,7 +146,7 @@ def render_route_config():
         {'Mode': 'Plane', 'Lead_Time': '0 FN', 'Cost_per_Unit': '$25', 'Best_For': 'Expensive, emergencies only'}
     ])
     
-    st.dataframe(transport_df, use_container_width=True, hide_index=True)
+    st.dataframe(transport_df, width='stretch', hide_index=True)
     
     # Warehouse Configuration
     st.markdown("### 🏭 Warehouse Configuration")
@@ -327,7 +327,7 @@ def render_inventory_tetris():
         template='plotly_white'
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_shipment_builder():
@@ -422,7 +422,7 @@ def render_upload_ready_logistics():
     ][['Zone', 'Buy_Modules', 'Rent_Modules']]
     
     if not wh_df.empty:
-        st.dataframe(wh_df, hide_index=True, use_container_width=True)
+        st.dataframe(wh_df, hide_index=True, width='stretch')
     else:
         st.caption("No warehouse changes")
     
@@ -433,7 +433,7 @@ def render_upload_ready_logistics():
     
     if not ship_df.empty:
         display_cols = ['Order_FN', 'Origin', 'Destination', 'Mode', 'Quantity', 'Arrival_FN']
-        st.dataframe(ship_df[display_cols], hide_index=True, use_container_width=True)
+        st.dataframe(ship_df[display_cols], hide_index=True, width='stretch')
     else:
         st.caption("No shipments planned")
     

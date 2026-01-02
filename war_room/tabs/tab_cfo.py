@@ -292,7 +292,7 @@ def render_liquidity_monitor():
     gb = GridOptionsBuilder.from_dataframe(results_df)
     gb.configure_column('Fortnight', editable=False, width=80)
     gb.configure_column('Opening', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()")
-    gb.configure_column('Net_Flow', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()")
+    gb.configure_column('Net_Flow', headerName='Net Flow', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()")
     gb.configure_column('Closing', editable=False, width=120, valueFormatter="'$' + value.toLocaleString()", cellStyle=closing_js)
     gb.configure_column('Status', editable=False, width=130, cellStyle=status_js)
     
@@ -323,7 +323,7 @@ def render_liquidity_monitor():
         template='plotly_white',
         yaxis_tickformat='$,.0f'
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_profit_control():
@@ -386,10 +386,10 @@ def render_profit_control():
     """)
     
     gb = GridOptionsBuilder.from_dataframe(income_data)
-    gb.configure_column('Line_Item', editable=False, width=180)
-    gb.configure_column('Last_Round', editable=False, width=150, 
+    gb.configure_column('Line_Item', headerName='Line Item', editable=False, width=180)
+    gb.configure_column('Last_Round', headerName='Last Round', editable=False, width=150, 
                        valueFormatter="'$' + value.toLocaleString()", cellStyle=REF_STYLE)
-    gb.configure_column('This_Round', editable=True, width=150,
+    gb.configure_column('This_Round', headerName='This Round', editable=True, width=150,
                        valueFormatter="'$' + value.toLocaleString()", cellStyle=EDITABLE_STYLE)
     gb.configure_column('Variance', editable=False, width=120,
                        valueFormatter="(value * 100).toFixed(1) + '%'", cellStyle=variance_js)
@@ -496,7 +496,7 @@ def render_balance_sheet_health():
         title={'text': 'Debt Ratio (%)'}
     ))
     fig.update_layout(height=300)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     col1, col2 = st.columns(2)
     with col1:
@@ -579,7 +579,7 @@ def render_upload_ready_finance():
             credit_summary.append({'Fortnight': f'FN{fn}', 'Amount': val})
     
     if credit_summary:
-        st.dataframe(pd.DataFrame(credit_summary), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(credit_summary), hide_index=True, width='stretch')
     else:
         st.caption("No credit line changes")
     
@@ -592,7 +592,7 @@ def render_upload_ready_finance():
             invest_summary.append({'Fortnight': f'FN{fn}', 'Amount': val})
     
     if invest_summary:
-        st.dataframe(pd.DataFrame(invest_summary), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(invest_summary), hide_index=True, width='stretch')
     else:
         st.caption("No investment changes")
     
@@ -600,7 +600,7 @@ def render_upload_ready_finance():
     st.markdown("### 🏠 Mortgages")
     mortgages = st.session_state.cfo_mortgages[st.session_state.cfo_mortgages['Amount'] > 0]
     if not mortgages.empty:
-        st.dataframe(mortgages, hide_index=True, use_container_width=True)
+        st.dataframe(mortgages, hide_index=True, width='stretch')
     else:
         st.caption("No mortgages")
     

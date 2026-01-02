@@ -363,7 +363,7 @@ def render_labor_cost_analysis():
             color_discrete_sequence=px.colors.qualitative.Set2
         )
         fig.update_layout(height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     # Total
     st.metric("**TOTAL LABOR EXPENSE**", f"${costs['total']:,.0f}")
@@ -396,7 +396,7 @@ def render_labor_cost_analysis():
         template='plotly_white',
         yaxis_title='Salary ($/hr)'
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_upload_ready_people():
@@ -413,7 +413,7 @@ def render_upload_ready_people():
     
     if not changes.empty:
         display = changes[['Zone', 'Hire', 'Fire', 'New_Salary']].copy()
-        st.dataframe(display, hide_index=True, use_container_width=True)
+        st.dataframe(display, hide_index=True, width='stretch')
     else:
         st.caption("No workforce changes")
     
@@ -422,7 +422,7 @@ def render_upload_ready_people():
     
     benefits = st.session_state.cpo_benefits[st.session_state.cpo_benefits['Amount'] > 0]
     if not benefits.empty:
-        st.dataframe(benefits, hide_index=True, use_container_width=True)
+        st.dataframe(benefits, hide_index=True, width='stretch')
     else:
         st.caption("No benefits set")
     

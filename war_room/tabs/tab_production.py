@@ -271,7 +271,7 @@ def render_resource_mgr():
     zones_df = st.session_state.production_zones[['Zone', 'Current_Machines', 'Current_Workers', 
                                                   'Module_Slots', 'Local_Materials', 'Machine_Cap', 'Labor_Cap']]
     
-    st.dataframe(zones_df, use_container_width=True, hide_index=True)
+    st.dataframe(zones_df, width='stretch', hide_index=True)
     
     # Section B: Expansion by Zone
     st.markdown("### Section B: Expansion by Zone")
@@ -342,7 +342,7 @@ def render_resource_mgr():
         template='plotly_white'
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_upload_ready_production():
@@ -360,7 +360,7 @@ def render_upload_ready_production():
     targets = targets[targets[[f'Target_FN{fn}' for fn in FORTNIGHTS]].sum(axis=1) > 0]
     
     if not targets.empty:
-        st.dataframe(targets, hide_index=True, use_container_width=True)
+        st.dataframe(targets, hide_index=True, width='stretch')
     else:
         st.caption("No production targets set")
     
@@ -371,7 +371,7 @@ def render_upload_ready_production():
     exp_changes = exp_df[(exp_df['Buy_Machines'] > 0) | (exp_df['Buy_Modules'] > 0)]
     
     if not exp_changes.empty:
-        st.dataframe(exp_changes, hide_index=True, use_container_width=True)
+        st.dataframe(exp_changes, hide_index=True, width='stretch')
     else:
         st.caption("No expansion planned")
     

@@ -286,7 +286,7 @@ def render_segment_pulse():
         styled_df = df.style.map(highlight_flags, subset=['Allocation Flag'])
         styled_df = styled_df.map(highlight_awareness, subset=['Awareness Gap'])
         
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        st.dataframe(styled_df, width='stretch', hide_index=True)
         st.markdown("---")
     
     # Competitive Positioning Chart
@@ -321,7 +321,7 @@ def render_segment_pulse():
         legend=dict(orientation='h', yanchor='bottom', y=1.02)
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 
@@ -368,11 +368,11 @@ def render_innovation_lab():
                        cellEditor='agSelectCellEditor',
                        cellEditorParams={'values': [0, 1]},
                        cellStyle=decision_js)
-    gb.configure_column('Est_Cost', editable=True, width=120,
+    gb.configure_column('Est_Cost', headerName='Est Cost', editable=True, width=120,
                        type=['numericColumn'],
                        valueFormatter="'$' + value.toLocaleString()",
                        cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Cost_Details', editable=False, width=180, cellStyle=REFERENCE_STYLE)
+    gb.configure_column('Cost_Details', headerName='Cost Details', editable=False, width=180, cellStyle=REFERENCE_STYLE)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_options = gb.build()
@@ -503,15 +503,15 @@ def render_strategy_cockpit():
     
     gb = GridOptionsBuilder.from_dataframe(strategy_df)
     gb.configure_column('Zone', editable=False, pinned='left', width=80)
-    gb.configure_column('Last_Sales', editable=False, width=100, 
+    gb.configure_column('Last_Sales', headerName='Last Sales', editable=False, width=100, 
                        type=['numericColumn'],
                        cellStyle=REFERENCE_STYLE)
     gb.configure_column('Stockout', editable=False, width=130,
                        cellStyle=stockout_js)
-    gb.configure_column('Target_Demand', editable=True, width=120,
+    gb.configure_column('Target_Demand', headerName='Target Demand', editable=True, width=120,
                        type=['numericColumn'],
                        cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Radio_Spots', editable=True, width=100,
+    gb.configure_column('Radio_Spots', headerName='Radio Spots', editable=True, width=100,
                        type=['numericColumn'],
                        cellStyle=EDITABLE_STYLE)
     gb.configure_column('Headcount', editable=True, width=100,
@@ -520,7 +520,7 @@ def render_strategy_cockpit():
     gb.configure_column('Price', editable=True, width=90,
                        type=['numericColumn'],
                        cellStyle=price_gouge_js)  # Dynamic: blue or red
-    gb.configure_column('Comp_Price', editable=False, width=100,
+    gb.configure_column('Comp_Price', headerName='Comp Price', editable=False, width=100,
                        type=['numericColumn'],
                        cellStyle=REFERENCE_STYLE)
     gb.configure_column('Payment', editable=True, width=80,
@@ -613,7 +613,7 @@ def render_upload_ready_marketing():
     st.markdown("### Marketing Campaigns")
     campaigns_data = [
         {'Brand': 'A', 'Zone': 'All', 'Channel': 'TV', 
-         'Amount': tv_spots * economics['TV_Cost_Spot'], 'Brand_Focus': brand_focus}
+         'Amount': tv_spots * economics['TV_Cost_Spot'], 'Brand Focus': brand_focus}
     ]
     for _, row in strategy_df.iterrows():
         campaigns_data.append({
@@ -621,7 +621,7 @@ def render_upload_ready_marketing():
             'Zone': row['Zone'],
             'Channel': 'Radio',
             'Amount': row['Radio_Spots'] * economics['Radio_Cost_Spot'],
-            'Brand_Focus': brand_focus
+            'Brand Focus': brand_focus
         })
     
     campaigns_df = pd.DataFrame(campaigns_data)
@@ -676,7 +676,7 @@ def render_upload_ready_innovation():
             })
     
     if not export_data:
-        st.info("💡 No innovations selected. Go to INNOVATION_LAB to select features.")
+        st.info("💡 No innovations selected. Go to Innovation Lab to select features.")
     else:
         export_df = pd.DataFrame(export_data)
         st.dataframe(export_df, width='stretch', hide_index=True)
