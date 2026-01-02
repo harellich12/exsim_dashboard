@@ -43,6 +43,30 @@ init_session_state()
 # =============================================================================
 with st.sidebar:
     st.title("🎯 ExSim War Room")
+    
+    # User Manual Download
+    from pathlib import Path
+    # Try multiple possible locations for the PDF
+    possible_paths = [
+        Path(__file__).parent.parent / "User Manual.pdf",  # Relative to app.py
+        Path.cwd() / "User Manual.pdf",  # Current working directory
+        Path.cwd().parent / "User Manual.pdf",  # Parent of CWD
+    ]
+    manual_path = None
+    for p in possible_paths:
+        if p.exists():
+            manual_path = p
+            break
+    
+    if manual_path:
+        st.download_button(
+            label="📖 Download User Manual",
+            data=manual_path.read_bytes(),
+            file_name="ExSim_User_Manual.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+    
     st.markdown("---")
     
     st.subheader("📁 Data Upload")
