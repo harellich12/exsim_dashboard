@@ -286,7 +286,7 @@ def render_segment_pulse():
         styled_df = df.style.map(highlight_flags, subset=['Allocation Flag'])
         styled_df = styled_df.map(highlight_awareness, subset=['Awareness Gap'])
         
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        st.dataframe(styled_df, width='stretch', hide_index=True)
         st.markdown("---")
     
     # Competitive Positioning Chart
@@ -321,7 +321,7 @@ def render_segment_pulse():
         legend=dict(orientation='h', yanchor='bottom', y=1.02)
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 

@@ -214,7 +214,7 @@ def render_cost_analysis():
         title={'text': 'Ordering Cost Ratio (%)'}
     ))
     fig.update_layout(height=300)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_mrp_engine():
@@ -337,7 +337,7 @@ def render_cash_flow_preview():
     
     spend_df = pd.DataFrame(spend_data)
     
-    st.dataframe(spend_df, use_container_width=True, hide_index=True)
+    st.dataframe(spend_df, width='stretch', hide_index=True)
     
     # Chart
     fig = go.Figure()
@@ -360,7 +360,7 @@ def render_cash_flow_preview():
         template='plotly_white',
         yaxis_tickformat='$,.0f'
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     total = sum(total_spend)
     set_state('PROCUREMENT_COST', total)
@@ -380,7 +380,7 @@ def render_upload_ready_procurement():
     active_orders = orders[(orders[[f'FN{fn}' for fn in FORTNIGHTS]].sum(axis=1) > 0)]
     
     if not active_orders.empty:
-        st.dataframe(active_orders, hide_index=True, use_container_width=True)
+        st.dataframe(active_orders, hide_index=True, width='stretch')
     else:
         st.caption("No orders placed")
     

@@ -323,7 +323,7 @@ def render_liquidity_monitor():
         template='plotly_white',
         yaxis_tickformat='$,.0f'
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_profit_control():
@@ -496,7 +496,7 @@ def render_balance_sheet_health():
         title={'text': 'Debt Ratio (%)'}
     ))
     fig.update_layout(height=300)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     col1, col2 = st.columns(2)
     with col1:
@@ -579,7 +579,7 @@ def render_upload_ready_finance():
             credit_summary.append({'Fortnight': f'FN{fn}', 'Amount': val})
     
     if credit_summary:
-        st.dataframe(pd.DataFrame(credit_summary), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(credit_summary), hide_index=True, width='stretch')
     else:
         st.caption("No credit line changes")
     
@@ -592,7 +592,7 @@ def render_upload_ready_finance():
             invest_summary.append({'Fortnight': f'FN{fn}', 'Amount': val})
     
     if invest_summary:
-        st.dataframe(pd.DataFrame(invest_summary), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(invest_summary), hide_index=True, width='stretch')
     else:
         st.caption("No investment changes")
     
@@ -600,7 +600,7 @@ def render_upload_ready_finance():
     st.markdown("### 🏠 Mortgages")
     mortgages = st.session_state.cfo_mortgages[st.session_state.cfo_mortgages['Amount'] > 0]
     if not mortgages.empty:
-        st.dataframe(mortgages, hide_index=True, use_container_width=True)
+        st.dataframe(mortgages, hide_index=True, width='stretch')
     else:
         st.caption("No mortgages")
     

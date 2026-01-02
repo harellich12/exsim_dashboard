@@ -149,7 +149,7 @@ def render_impact_config():
         {'Initiative': 'CO2 Credits', 'Type': 'OpEx', 'Cost': '$25/credit', 'CO2 Reduction': '1 ton/credit'}
     ])
     
-    st.dataframe(settings_df, use_container_width=True, hide_index=True)
+    st.dataframe(settings_df, width='stretch', hide_index=True)
 
 
 def render_strategy_selector():
@@ -210,12 +210,12 @@ def render_strategy_selector():
     st.markdown("### Cost per Ton Comparison")
     
     comparison_data = pd.DataFrame([
-        {'Initiative': 'Solar PV', 'Quantity': impact['solar']['qty'], 
+        {'Initiative': 'Solar PV', 'Quantity': str(impact['solar']['qty']), 
          'Total Cost': f"${impact['solar']['cost']:,.0f}", 
          'CO2 Reduced': f"{impact['solar']['reduction']:.1f} tons",
          'Cost/Ton': f"${impact['solar']['cost_per_ton']:,.0f}" if impact['solar']['cost_per_ton'] > 0 else '-',
          'Payback': f"{impact['solar']['payback']:.1f} yrs" if impact['solar']['payback'] < 999 else '-'},
-        {'Initiative': 'Trees', 'Quantity': impact['trees']['qty'],
+        {'Initiative': 'Trees', 'Quantity': str(impact['trees']['qty']),
          'Total Cost': f"${impact['trees']['cost']:,.0f}",
          'CO2 Reduced': f"{impact['trees']['reduction']:.1f} tons",
          'Cost/Ton': f"${impact['trees']['cost_per_ton']:,.0f}" if impact['trees']['cost_per_ton'] > 0 else '-',
@@ -225,14 +225,14 @@ def render_strategy_selector():
          'CO2 Reduced': f"{impact['green_elec']['reduction']:.1f} tons",
          'Cost/Ton': f"${impact['green_elec']['cost_per_ton']:,.0f}" if impact['green_elec']['cost_per_ton'] > 0 else '-',
          'Payback': 'N/A (OpEx)'},
-        {'Initiative': 'CO2 Credits', 'Quantity': impact['credits']['qty'],
+        {'Initiative': 'CO2 Credits', 'Quantity': str(impact['credits']['qty']),
          'Total Cost': f"${impact['credits']['cost']:,.0f}",
          'CO2 Reduced': f"{impact['credits']['reduction']:.1f} tons",
          'Cost/Ton': f"${impact['credits']['cost_per_ton']:,.0f}",
          'Payback': 'N/A (OpEx)'}
     ])
     
-    st.dataframe(comparison_data, use_container_width=True, hide_index=True)
+    st.dataframe(comparison_data, width='stretch', hide_index=True)
 
 
 def render_results():
@@ -293,7 +293,7 @@ def render_results():
                 color_discrete_sequence=px.colors.qualitative.Set2
             )
             fig.update_layout(height=350)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
 
 def render_upload_ready_esg():
@@ -309,20 +309,20 @@ def render_upload_ready_esg():
     
     decisions = []
     if st.session_state.esg_solar_panels > 0:
-        decisions.append({'Initiative': 'Solar PV Panels', 'Quantity': st.session_state.esg_solar_panels, 
+        decisions.append({'Initiative': 'Solar PV Panels', 'Quantity': str(st.session_state.esg_solar_panels), 
                          'Cost': f"${impact['solar']['cost']:,.0f}"})
     if st.session_state.esg_trees > 0:
-        decisions.append({'Initiative': 'Trees', 'Quantity': st.session_state.esg_trees,
+        decisions.append({'Initiative': 'Trees', 'Quantity': str(st.session_state.esg_trees),
                          'Cost': f"${impact['trees']['cost']:,.0f}"})
     if st.session_state.esg_green_electricity_pct > 0:
         decisions.append({'Initiative': 'Green Electricity', 'Quantity': f"{st.session_state.esg_green_electricity_pct}%",
                          'Cost': f"${impact['green_elec']['cost']:,.0f}"})
     if st.session_state.esg_co2_credits > 0:
-        decisions.append({'Initiative': 'CO2 Credits', 'Quantity': st.session_state.esg_co2_credits,
+        decisions.append({'Initiative': 'CO2 Credits', 'Quantity': str(st.session_state.esg_co2_credits),
                          'Cost': f"${impact['credits']['cost']:,.0f}"})
     
     if decisions:
-        st.dataframe(pd.DataFrame(decisions), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(decisions), hide_index=True, width='stretch')
     else:
         st.caption("No ESG initiatives selected")
     
