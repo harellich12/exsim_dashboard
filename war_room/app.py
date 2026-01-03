@@ -48,9 +48,9 @@ with st.sidebar:
     from pathlib import Path
     # Try multiple possible locations for the PDF
     possible_paths = [
-        Path(__file__).parent.parent / "User Manual.pdf",  # Relative to app.py
-        Path.cwd() / "User Manual.pdf",  # Current working directory
-        Path.cwd().parent / "User Manual.pdf",  # Parent of CWD
+        Path(__file__).parent.parent / "Exsim_user_manual.pdf",  # Relative to app.py
+        Path.cwd() / "Exsim_user_manual.pdf",  # Current working directory
+        Path.cwd().parent / "Exsim_user_manual.pdf",  # Parent of CWD
     ]
     manual_path = None
     for p in possible_paths:
@@ -62,7 +62,7 @@ with st.sidebar:
         st.download_button(
             label="📖 Download User Manual",
             data=manual_path.read_bytes(),
-            file_name="ExSim_User_Manual.pdf",
+            file_name="Exsim_User_Manual.pdf",
             mime="application/pdf",
             use_container_width=True
         )
