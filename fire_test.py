@@ -66,7 +66,7 @@ DASHBOARDS = {
         "expected_sheets": ["STRATEGY_SELECTOR", "UPLOAD_READY_ESG"]
     },
     "Production": {
-        "dir": "Produciton Manager Dashboard",
+        "dir": "Production Manager Dashboard",
         "script": "generate_production_dashboard_zones.py",
         "output": "Production_Dashboard_Zones.xlsx",
         "expected_sheets": ["ZONE_CALCULATORS", "UPLOAD_READY_PRODUCTION"]

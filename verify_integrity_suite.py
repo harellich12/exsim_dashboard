@@ -152,7 +152,7 @@ class TestCFODashboard(ExSimIntegrityTest):
 
 
 class TestProductionDashboard(ExSimIntegrityTest):
-    FOLDER = "Produciton Manager Dashboard"
+    FOLDER = "Production Manager Dashboard"
     SCRIPT = "generate_production_dashboard_zones.py"
     OUTPUT = "Production_Dashboard_Zones.xlsx"
 

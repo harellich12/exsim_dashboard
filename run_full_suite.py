@@ -40,7 +40,7 @@ def main():
         BASE_DIR / "CMO Dashboard/generate_cmo_dashboard_complete.py",
         BASE_DIR / "Purchasing Role/generate_purchasing_dashboard_v2.py",
         BASE_DIR / "ESG Dashboard/generate_esg_dashboard.py",
-        BASE_DIR / "Produciton Manager Dashboard/generate_production_dashboard_zones.py"
+        BASE_DIR / "Production Manager Dashboard/generate_production_dashboard_zones.py"
     ]
 
     gen_success = True

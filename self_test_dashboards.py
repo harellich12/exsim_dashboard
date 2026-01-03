@@ -1065,7 +1065,7 @@ def test_production_dashboard():
     """Test Production Dashboard formulas column by column."""
     results = []
 
-    output_path = BASE_DIR / "Produciton Manager Dashboard" / "Production_Dashboard_Zones.xlsx"
+    output_path = BASE_DIR / "Production Manager Dashboard" / "Production_Dashboard_Zones.xlsx"
     if not output_path.exists():
         return [test_result("Production Dashboard file exists", False)]
 
