@@ -16,9 +16,17 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state
 
-# Constants
-ZONES = ['Center', 'West', 'North', 'East', 'South']
-SEGMENTS = ['High', 'Low']
+# Import centralized constants from case_parameters
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import COMMON
+    ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
+    SEGMENTS = COMMON.get('SEGMENTS', ['High', 'Low'])
+except ImportError:
+    ZONES = ['Center', 'West', 'North', 'East', 'South']
+    SEGMENTS = ['High', 'Low']
 
 # Default innovation features (from Excel generator)
 DEFAULT_INNOVATION_FEATURES = [
@@ -686,11 +694,69 @@ def render_upload_ready_innovation():
             st.success("✅ Data copied! Paste into ExSim Innovation form.")
 
 
+def render_cross_reference():
+    """Render CROSS_REFERENCE sub-tab - Upstream data visibility."""
+    st.subheader("🔗 CROSS REFERENCE - Upstream Support")
+    st.caption("Live visibility into Production capacity and Finance budget.")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        cfo_data = import_dashboard_data('CFO') or {}
+    except ImportError:
+        st.error("Could not load shared_outputs module")
+        prod_data = {}
+        cfo_data = {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🏭 Production (Capacity)")
+        st.info("How much can we actually sell?")
+        
+        # Extract Production Plan Target Sum
+        try:
+            prod_plan = prod_data.get('production_plan', {})
+            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            utilization = prod_data.get('capacity_utilization', {}).get('mean', 0)
+        except:
+            total_target = 0
+            utilization = 0
+            
+        st.metric("Total Production Planned", f"{total_target:,.0f} units")
+        st.metric("Factory Utilization", f"{utilization*100:.1f}%")
+
+    with col2:
+        st.markdown("### 💰 Finance (Budget)")
+        st.info("Do we have cash for campaigns?")
+        
+        liquidity = cfo_data.get('liquidity_status', 'Unknown')
+        
+        st.metric("Liquidity Status", liquidity)
+        
+        if "CRITICAL" in liquidity:
+            st.error(f"🔴 {liquidity} - Cut Spending!")
+        elif "Stable" in liquidity:
+            st.success(f"🟢 {liquidity} - Budget Safe")
+        else:
+            st.info(f"ℹ️ {liquidity}")
+
+
 def render_cmo_tab():
     """Render the CMO (Marketing) tab with 5 Excel-aligned subtabs."""
     init_cmo_state()
     
-    st.header("📢 CMO Dashboard - Marketing Strategy")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("📢 CMO Dashboard - Marketing Strategy")
+    with col_download:
+        try:
+            from utils.report_bridge import create_download_button
+            create_download_button('CMO', 'Marketing')
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Always sync data from all available sources
     sync_from_market_data()
@@ -713,13 +779,14 @@ def render_cmo_tab():
     else:
         st.info("💡 Upload Market Report, Sales Admin Expenses, and Finished Goods in sidebar to populate data")
     
-    # 5 SUBTABS - Matching Excel sheets exactly
+    # 6 SUBTABS (Updated)
     subtabs = st.tabs([
         "📊 Segment Pulse",
         "🔬 Innovation Lab", 
         "🎯 Strategy Cockpit",
         "📤 Upload Marketing",
-        "📤 Upload Innovation"
+        "📤 Upload Innovation",
+        "🔗 Cross Reference"
     ])
     
     with subtabs[0]:
@@ -736,3 +803,6 @@ def render_cmo_tab():
     
     with subtabs[4]:
         render_upload_ready_innovation()
+        
+    with subtabs[5]:
+        render_cross_reference()

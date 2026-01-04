@@ -23,10 +23,16 @@ import sys
 # Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import MARKET
+    from case_parameters import MARKET, COMMON
 except ImportError:
     print("Warning: Could not import case_parameters.py. Using defaults.")
     MARKET = {}
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -58,10 +64,11 @@ def get_data_path(filename):
     return None
 
 OUTPUT_FILE = "CMO_Dashboard_Complete.xlsx"
-MY_COMPANY = "Company 3"
 
-ZONES = ["Center", "West", "North", "East", "South"]
-SEGMENTS = ["High", "Low"]
+# Use centralized constants from case_parameters
+MY_COMPANY = COMMON.get('MY_COMPANY', "Company 3")
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
+SEGMENTS = COMMON.get('SEGMENTS', ["High", "Low"])
 
 # Defaults - set to 0 to ensure data comes only from Excel files
 DEFAULT_PRICE = 0
@@ -511,7 +518,7 @@ def load_marketing_intelligence(filepath_sales, filepath_market):
     return intelligence
 
 def create_complete_dashboard(market_data, innovation_features, marketing_template, 
-                               sales_data, inventory_data, marketing_intelligence):
+                               sales_data, inventory_data, marketing_intelligence, output_buffer=None, decision_overrides=None):
     """Create the complete 5-tab CMO Dashboard."""
     
     wb = Workbook()
@@ -876,7 +883,11 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         cost_str = f"${upfront:,.0f} + ${variable:.2f}/unit"
         ws2.cell(row=row, column=3, value=cost_str).border = thin_border
         
-        cell = ws2.cell(row=row, column=2, value=0)
+        dec_val = 0
+        if decision_overrides and 'innovation' in decision_overrides:
+             dec_val = decision_overrides['innovation'].get(feature, 0)
+
+        cell = ws2.cell(row=row, column=2, value=dec_val)
         cell.border = thin_border
         cell.fill = input_fill
         cell.alignment = Alignment(horizontal='center')
@@ -964,6 +975,10 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws3.cell(row=9, column=1, value="TV Spots (Qty)").border = thin_border
     # Convert budget to spots approx
     tv_spots_init = int(marketing_template['tv_budget'] / tv_cost_spot) if tv_cost_spot else 0
+    
+    if decision_overrides and 'tv_spots' in decision_overrides:
+         tv_spots_init = decision_overrides['tv_spots']
+
     cell = ws3.cell(row=9, column=2, value=tv_spots_init)
     cell.border = thin_border
     cell.fill = input_fill
@@ -976,7 +991,11 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     cell.border = thin_border
     
     ws3.cell(row=10, column=1, value="Brand Focus (0-100)").border = thin_border
-    cell = ws3.cell(row=10, column=2, value=marketing_template['brand_focus'])
+    brand_focus_val = marketing_template['brand_focus']
+    if decision_overrides and 'brand_focus' in decision_overrides:
+         brand_focus_val = decision_overrides['brand_focus']
+
+    cell = ws3.cell(row=10, column=2, value=brand_focus_val)
     cell.border = thin_border
     cell.fill = input_fill
     ws3['C10'] = "0=Awareness focus, 100=Attributes focus"
@@ -1019,24 +1038,40 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             cell.fill = ref_fill
         
         # Target Demand
-        cell = ws3.cell(row=row, column=4, value=marketing_template['demand'].get(zone, 0))
+        dem_val = marketing_template['demand'].get(zone, 0)
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             dem_val = decision_overrides['zones'][zone].get('target_demand', dem_val)
+        
+        cell = ws3.cell(row=row, column=4, value=dem_val)
         cell.border = thin_border
         cell.fill = input_fill
         
         # Radio Spots (Qty)
         radio_bud = marketing_template['radio_budgets'].get(zone, 0)
         radio_spots_init = int(radio_bud / radio_cost_spot) if radio_cost_spot else 0
+        
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             radio_spots_init = decision_overrides['zones'][zone].get('radio', radio_spots_init)
+        
         cell = ws3.cell(row=row, column=5, value=radio_spots_init)
         cell.border = thin_border
         cell.fill = input_fill
         
         # Salespeople (Headcount)
-        cell = ws3.cell(row=row, column=6, value=marketing_template['salespeople'].get(zone, 0))
+        hc_val = marketing_template['salespeople'].get(zone, 0)
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             hc_val = decision_overrides['zones'][zone].get('salespeople', hc_val)
+             
+        cell = ws3.cell(row=row, column=6, value=hc_val)
         cell.border = thin_border
         cell.fill = input_fill
         
         # Price
-        cell = ws3.cell(row=row, column=7, value=marketing_template['prices'].get(zone, 0))
+        price_val = marketing_template['prices'].get(zone, 0)
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             price_val = decision_overrides['zones'][zone].get('price', price_val)
+             
+        cell = ws3.cell(row=row, column=7, value=price_val)
         cell.border = thin_border
         cell.fill = input_fill
         cell.number_format = '$#,##0'
@@ -1225,8 +1260,78 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws5.column_dimensions['B'].width = 35
     ws5.column_dimensions['C'].width = 10
     
+    ws5.column_dimensions['A'].width = 10
+    ws5.column_dimensions['B'].width = 35
+    ws5.column_dimensions['C'].width = 10
+    
+    # =========================================================================
+    # TAB 6: CROSS_REFERENCE (Upstream Data)
+    # =========================================================================
+    ws6 = wb.create_sheet("CROSS_REFERENCE")
+    
+    ws6['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
+    ws6['A1'].font = title_font
+    ws6['A2'] = "Key metrics from Production and Finance."
+    ws6['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        cfo_data = import_dashboard_data('CFO') or {}
+    except ImportError:
+        prod_data = {}
+        cfo_data = {}
+    
+    row = 4
+    
+    # Production Section
+    ws6.cell(row=row, column=1, value="Production (Capacity)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid") # Blue
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    prod_metrics = [
+        ("Production Plan (Total Units)", f"{sum([d.get('Target',0) for d in prod_data.get('production_plan', {}).values()]) if prod_data and 'production_plan' in prod_data else 'N/A'}"),
+        ("Avg Capacity Utilization", f"{prod_data.get('capacity_utilization', {}).get('mean', 0)*100:.1f}%" if prod_data else "N/A"),
+    ]
+    
+    for label, value in prod_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        ws6.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+        
+    row += 2
+    
+    # CFO Section
+    ws6.cell(row=row, column=1, value="Finance (Budget)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid") # Green
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    cfo_metrics = [
+        ("Budget Status", "Check Finance Dashboard"),
+        ("Liquidity Status", cfo_data.get('liquidity_status', 'Unknown') if cfo_data else "Unknown"),
+    ]
+    
+    for label, value in cfo_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        ws6.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+
+    # Formatting
+    for col in ['A', 'B']:
+        ws6.column_dimensions[col].width = 30
+
     # Save
-    wb.save(OUTPUT_FILE)
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
     print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
@@ -1300,6 +1405,21 @@ def main():
     print("  * STRATEGY_COCKPIT (4 Ps Decisions + ROI)")
     print("  * UPLOAD_READY_MARKETING (ExSim Format)")
     print("  * UPLOAD_READY_INNOVATION (ExSim Format)")
+    
+    # Export key metrics for downstream dashboards
+    if export_dashboard_data:
+        # Safely calculate innovation costs
+        try:
+            innov_costs = sum(f.get('cost', 0) for f in innovation_features if isinstance(f, dict) and f.get('selected', False))
+        except:
+            innov_costs = 0
+        
+        export_dashboard_data('CMO', {
+            'demand_forecast': {zone: market_data.get('zones', {}).get(zone, {}).get('demand', 0) for zone in ZONES},
+            'marketing_spend': sum(sales_data.get(fn, {}).get('advertising', 0) for fn in range(1, 9)),
+            'pricing': {zone: market_data.get('zones', {}).get(zone, {}).get('my_price', 0) for zone in ZONES},
+            'innovation_costs': innov_costs
+        })
 
 
 if __name__ == "__main__":

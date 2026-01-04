@@ -20,10 +20,18 @@ import sys
 # Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import PRODUCTION
+    from case_parameters import PRODUCTION, COMMON
 except ImportError:
     print("Warning: Could not import case_parameters.py. Using defaults.")
     PRODUCTION = {}
+    COMMON = {}
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data, import_dashboard_data
+except ImportError:
+    export_dashboard_data = None
+    import_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -58,10 +66,11 @@ def get_data_path(filename):
 
 OUTPUT_FILE = "Production_Dashboard_Zones.xlsx"
 
-FORTNIGHTS = list(range(1, 9))  # 1-8
-ZONES = ["Center", "West", "North", "East", "South"]
-SECTIONS = ["Section 1", "Section 2", "Section 3"]
-MACHINE_TYPES = ["M1", "M2", "M3-alpha", "M3-beta", "M4"]
+# Use centralized constants from case_parameters
+FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
+SECTIONS = COMMON.get('SECTIONS', ["Section 1", "Section 2", "Section 3"])
+MACHINE_TYPES = COMMON.get('MACHINE_TYPES', ["M1", "M2", "M3-alpha", "M3-beta", "M4"])
 
 # Default production parameters
 # Default production parameters from Case
@@ -272,7 +281,8 @@ def load_production_template(filepath):
 # =============================================================================
 
 def create_zones_dashboard(materials_data, fg_data, workers_data,
-                           machines_data, template_data):
+                           machines_data, template_data, output_buffer=None,
+                           decision_overrides=None):
     """Create the Zone-Specific Production Dashboard."""
 
     wb = Workbook()
@@ -368,12 +378,24 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
             ws1.cell(row=row, column=1, value=f"FN{fn}").border = thin_border
 
             # Target (input)
-            cell = ws1.cell(row=row, column=2, value=0 if zone_data['machines'] == 0 else 500)
+            target_val = 0 if zone_data['machines'] == 0 else 500
+            if decision_overrides and 'targets' in decision_overrides:
+                 target_val = decision_overrides['targets'].get(zone, target_val)
+            
+            cell = ws1.cell(row=row, column=2, value=target_val)
             cell.border = thin_border
             cell.fill = input_fill
 
             # Overtime Y/N (input)
-            cell = ws1.cell(row=row, column=3, value="N")
+            ot_val = "N"
+            if decision_overrides and 'overtime' in decision_overrides:
+                 # Check if this specific zone and fortnight is overriden?
+                 # Current app sets same target/OT for ALL fortnights for simplicity?
+                 # tab_production.py usually sets one target per zone.
+                 # Let's assume overrides is {zone: value}.
+                 ot_val = decision_overrides['overtime'].get(zone, "N")
+                 
+            cell = ws1.cell(row=row, column=3, value=ot_val)
             cell.border = thin_border
             cell.fill = input_fill
             cell.alignment = Alignment(horizontal='center')
@@ -798,9 +820,142 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
     for col in range(1, 5):
         ws3.column_dimensions[get_column_letter(col)].width = 15
 
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    # =========================================================================
+    # TAB 4: CROSS_REFERENCE (Upstream Dashboard KPIs)
+    # =========================================================================
+    ws4 = wb.create_sheet("CROSS_REFERENCE")
+    
+    ws4['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Dashboard KPIs"
+    ws4['A1'].font = title_font
+    ws4['A2'] = "Key metrics from CMO (demand) and CPO (workforce) affecting production planning."
+    ws4['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared outputs
+    try:
+        cmo_data_shared = import_dashboard_data('CMO') if import_dashboard_data else {}
+        cpo_data_shared = import_dashboard_data('CPO') if import_dashboard_data else {}
+    except:
+        cmo_data_shared = cpo_data_shared = {}
+    
+    row = 4
+    
+    # CMO Section - Demand Forecast
+    ws4.cell(row=row, column=1, value="CMO (Marketing) - Demand Forecast").font = section_font
+    ws4.cell(row=row, column=1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    ws4.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    # Headers
+    ws4.cell(row=row, column=1, value="Zone").font = header_font
+    ws4.cell(row=row, column=1).fill = header_fill
+    ws4.cell(row=row, column=1).border = thin_border
+    ws4.cell(row=row, column=2, value="Demand").font = header_font
+    ws4.cell(row=row, column=2).fill = header_fill
+    ws4.cell(row=row, column=2).border = thin_border
+    ws4.cell(row=row, column=3, value="Price").font = header_font
+    ws4.cell(row=row, column=3).fill = header_fill
+    ws4.cell(row=row, column=3).border = thin_border
+    row += 1
+    
+    demand = cmo_data_shared.get('demand_forecast', {}) if cmo_data_shared else {}
+    pricing = cmo_data_shared.get('pricing', {}) if cmo_data_shared else {}
+    
+    for zone in ZONES:
+        ws4.cell(row=row, column=1, value=zone).border = thin_border
+        ws4.cell(row=row, column=1).fill = zone_fills[zone]
+        ws4.cell(row=row, column=1).font = Font(color="FFFFFF")
+        
+        cell = ws4.cell(row=row, column=2, value=demand.get(zone, 0))
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = "#,##0"
+        
+        cell = ws4.cell(row=row, column=3, value=pricing.get(zone, 0))
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = "$#,##0"
+        row += 1
+    
+    row += 1
+    
+    # Marketing totals
+    ws4.cell(row=row, column=1, value="Marketing Spend").border = thin_border
+    cell = ws4.cell(row=row, column=2, value=cmo_data_shared.get('marketing_spend', 0) if cmo_data_shared else 0)
+    cell.border = thin_border
+    cell.fill = calc_fill
+    cell.number_format = "$#,##0"
+    row += 2
+    
+    # CPO Section - Workforce
+    ws4.cell(row=row, column=1, value="CPO (People) - Workforce Available").font = section_font
+    ws4.cell(row=row, column=1).fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")
+    ws4.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    # Headers
+    ws4.cell(row=row, column=1, value="Zone").font = header_font
+    ws4.cell(row=row, column=1).fill = header_fill
+    ws4.cell(row=row, column=1).border = thin_border
+    ws4.cell(row=row, column=2, value="Workers").font = header_font
+    ws4.cell(row=row, column=2).fill = header_fill
+    ws4.cell(row=row, column=2).border = thin_border
+    ws4.cell(row=row, column=3, value="Capacity*").font = header_font
+    ws4.cell(row=row, column=3).fill = header_fill
+    ws4.cell(row=row, column=3).border = thin_border
+    row += 1
+    
+    headcount = cpo_data_shared.get('workforce_headcount', {}) if cpo_data_shared else {}
+    
+    for zone in ZONES:
+        workers = headcount.get(zone, 0)
+        ws4.cell(row=row, column=1, value=zone).border = thin_border
+        ws4.cell(row=row, column=1).fill = zone_fills[zone]
+        ws4.cell(row=row, column=1).font = Font(color="FFFFFF")
+        
+        cell = ws4.cell(row=row, column=2, value=workers)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = "#,##0"
+        
+        # Capacity = workers * productivity (assume 50 units/worker)
+        cell = ws4.cell(row=row, column=3, value=workers * 50)
+        cell.border = thin_border
+        cell.fill = calc_fill
+        cell.number_format = "#,##0"
+        row += 1
+    
+    row += 1
+    
+    # Payroll
+    ws4.cell(row=row, column=1, value="Total Payroll Forecast").border = thin_border
+    cell = ws4.cell(row=row, column=2, value=cpo_data_shared.get('payroll_forecast', 0) if cpo_data_shared else 0)
+    cell.border = thin_border
+    cell.fill = calc_fill
+    cell.number_format = "$#,##0"
+    row += 1
+    
+    ws4.cell(row=row, column=1, value="Hiring Costs").border = thin_border
+    cell = ws4.cell(row=row, column=2, value=cpo_data_shared.get('hiring_costs', 0) if cpo_data_shared else 0)
+    cell.border = thin_border
+    cell.fill = calc_fill
+    cell.number_format = "$#,##0"
+    
+    row += 2
+    ws4.cell(row=row, column=1, value="* Capacity assumes 50 units/worker/fortnight").font = Font(italic=True, color="666666")
+    
+    # Column widths for cross-reference tab
+    ws4.column_dimensions['A'].width = 30
+    ws4.column_dimensions['B'].width = 15
+    ws4.column_dimensions['C'].width = 15
+
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
 def main():
@@ -865,6 +1020,17 @@ def main():
     print("  * ZONE_CALCULATORS (5 Zone-Specific Production Blocks)")
     print("  * RESOURCE_MGR (Assignments/Expansion/Modules by Zone)")
     print("  * UPLOAD_READY_PRODUCTION (ExSim Format)")
+    
+    # Export key metrics for downstream dashboards
+    if export_dashboard_data:
+        total_production = sum(machines_data.get(z, {}).get('machines', 0) * 200 for z in ZONES)
+        total_workers = sum(workers_data.get(z, {}).get('workers', 0) for z in ZONES)
+        export_dashboard_data('Production', {
+            'production_plan': {zone: machines_data.get(zone, {}).get('machines', 0) * 200 for zone in ZONES},
+            'capacity_utilization': 0.85,  # Placeholder - would be calculated from actuals
+            'overtime_hours': 0,  # Calculated from dashboard inputs
+            'unit_costs': {zone: 40 for zone in ZONES}  # Base unit cost
+        })
 
 
 if __name__ == "__main__":

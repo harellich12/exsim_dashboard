@@ -16,8 +16,15 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state
 
-# Constants
-FORTNIGHTS = list(range(1, 9))
+# Import centralized constants from case_parameters
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import COMMON
+    FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+except ImportError:
+    FORTNIGHTS = list(range(1, 9))
 
 # Default supplier configuration
 SUPPLIERS = {
@@ -392,11 +399,75 @@ def render_upload_ready_procurement():
         st.success("✅ Data copied! Paste into ExSim Procurement form.")
 
 
+def render_cross_reference():
+    """Render CROSS_REFERENCE sub-tab - Upstream data visibility."""
+    st.subheader("🔗 CROSS REFERENCE - Upstream Support")
+    st.caption("Live visibility into Production requirements and Finance limits.")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        cfo_data = import_dashboard_data('CFO') or {}
+    except ImportError:
+        st.error("Could not load shared_outputs module")
+        prod_data = {}
+        cfo_data = {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🏭 Production (Material Needs)")
+        st.info("Ensures you buy enough raw materials.")
+        
+        # Extract Production Plan Target Sum
+        try:
+            prod_plan = prod_data.get('production_plan', {})
+            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            utilization = prod_data.get('capacity_utilization', {}).get('mean', 0)
+        except:
+            total_target = 0
+            utilization = 0
+            
+        st.metric("Total Production Target", f"{total_target:,.0f} units")
+        st.metric("Avg Capacity Utilization", f"{utilization*100:.1f}%")
+        
+        if total_target > 0:
+            st.success("✅ Production Plan is Active")
+        else:
+            st.warning("⚠️ No Production Plan detected")
+
+    with col2:
+        st.markdown("### 💰 Finance (Liquidity)")
+        st.info("Check if cash is available for bulk buying.")
+        
+        liquidity = cfo_data.get('liquidity_status', 'Unknown')
+        cash_proj = cfo_data.get('cash_flow_projection', "N/A")
+        
+        st.metric("Liquidity Status", liquidity)
+        
+        if "CRITICAL" in liquidity:
+            st.error(f"🔴 {liquidity} - Reduce Order Size!")
+        elif "Stable" in liquidity:
+            st.success(f"🟢 {liquidity} - OK to Order")
+        else:
+            st.info(f"ℹ️ {liquidity}")
+
+
 def render_purchasing_tab():
     """Render the Purchasing tab with 5 Excel-aligned subtabs."""
     init_purchasing_state()
     
-    st.header("📦 Purchasing Dashboard - MRP & Sourcing")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("📦 Purchasing Dashboard - MRP & Sourcing")
+    with col_download:
+        try:
+            from utils.report_bridge import create_download_button
+            create_download_button('Purchasing', 'Purchasing')
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Data status
     raw_data = get_state('raw_materials_data')
@@ -405,13 +476,14 @@ def render_purchasing_tab():
     else:
         st.info("💡 Upload Raw Materials file in sidebar for inventory data")
     
-    # 5 SUBTABS
+    # 6 SUBTABS (Updated to include Cross Reference)
     subtabs = st.tabs([
         "🏪 Supplier Config",
         "📊 Cost Analysis",
         "📦 MRP Engine",
         "💵 Cash Flow",
-        "📤 Upload Ready"
+        "📤 Upload Ready",
+        "🔗 Cross Reference"
     ])
     
     with subtabs[0]:
@@ -428,3 +500,6 @@ def render_purchasing_tab():
     
     with subtabs[4]:
         render_upload_ready_procurement()
+        
+    with subtabs[5]:
+        render_cross_reference()

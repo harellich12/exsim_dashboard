@@ -20,10 +20,17 @@ import sys
 # Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import PURCHASING
+    from case_parameters import PURCHASING, COMMON
 except ImportError:
     print("Warning: Could not import case_parameters.py. Using defaults.")
     PURCHASING = {}
+    COMMON = {}
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -56,10 +63,11 @@ def get_data_path(filename):
 
 OUTPUT_FILE = "Purchasing_Dashboard.xlsx"
 
-FORTNIGHTS = list(range(1, 9))  # 1-8
-ZONES = ["Center", "West", "North", "East", "South"]
-PARTS = ["Part A", "Part B"]
-PIECES = ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"]
+# Use centralized constants from case_parameters
+FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
+PARTS = COMMON.get('PARTS', ["Part A", "Part B"])
+PIECES = COMMON.get('PIECES', ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"])
 SUPPLIERS = ["Supplier A", "Supplier B", "Supplier C"]
 
 # Default supplier configuration
@@ -210,7 +218,7 @@ def load_procurement_template(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_purchasing_dashboard(materials_data, cost_data, template_data):
+def create_purchasing_dashboard(materials_data, cost_data, template_data, output_buffer=None, decision_overrides=None):
     """Create the comprehensive Purchasing Dashboard."""
     
     wb = Workbook()
@@ -546,7 +554,14 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
             
             ws3.cell(row=row, column=1, value=f"Order {name} (Lead:{lead}, Batch:{batch})").border = thin_border
             for fn in FORTNIGHTS:
-                cell = ws3.cell(row=row, column=1+fn, value=0)
+                val = 0
+                if decision_overrides and part in decision_overrides:
+                    if name in decision_overrides[part]:
+                        # override is dict of FN -> val ? or list
+                        # let's assume dict key=FN integer
+                        val = decision_overrides[part][name].get(fn, 0)
+                
+                cell = ws3.cell(row=row, column=1+fn, value=val)
                 cell.border = thin_border
                 cell.fill = input_fill
             order_rows[part][name] = row
@@ -828,9 +843,14 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     ws5.column_dimensions[get_column_letter(pieces_col_start+2)].width = 10
     ws5.column_dimensions[get_column_letter(pieces_col_start+3)].width = 8
     
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
 def main():
@@ -879,6 +899,27 @@ def main():
     print("  * MRP_ENGINE (Material Requirements Calculator)")
     print("  * CASH_FLOW_PREVIEW (Procurement Spending)")
     print("  * UPLOAD_READY_PROCUREMENT (ExSim Format)")
+    print("  * CROSS_REFERENCE (Upstream Data)")
+    
+    # Export key metrics for downstream dashboards
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate summaries for export
+        # Assuming 'display_df' is available in the scope where create_purchasing_dashboard is called,
+        # or that the relevant data can be derived from 'cost_data' or other inputs.
+        # For this context, we'll use a placeholder or derive from cost_data if possible.
+        # If display_df is not directly available here, a more robust way would be to return it from create_purchasing_dashboard.
+        # For now, using a placeholder or a simplified calculation based on available data.
+        total_spend = cost_data.get('consumption_cost', 0) # This is a simplification, actual spend would come from the generated sheet.
+        
+        export_dashboard_data('Purchasing', {
+            'material_orders': "See MRP Engine",
+            'supplier_spend': total_spend, # This should ideally come from the generated sheet's total spend.
+            'lead_time_schedule': "Standard"
+        })
+    except ImportError:
+        print("Warning: shared_outputs not found, skipping export")
 
 
 if __name__ == "__main__":

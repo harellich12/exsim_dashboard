@@ -20,10 +20,18 @@ import sys
 # Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import FINANCIAL
+    from case_parameters import FINANCIAL, COMMON
 except ImportError:
     print("Warning: Could not import case_parameters.py. Using defaults.")
     FINANCIAL = {}
+    COMMON = {}
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data, import_dashboard_data
+except ImportError:
+    export_dashboard_data = None
+    import_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -58,7 +66,7 @@ def get_data_path(filename):
 
 OUTPUT_FILE = "Finance_Dashboard_Final.xlsx"
 
-FORTNIGHTS = list(range(1, 9))  # 1-8
+FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))  # From centralized config
 
 # Default financial parameters
 DEF_LOANS = FINANCIAL.get('LOANS', {})
@@ -1283,10 +1291,131 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     for col in range(1, 10):
         ws5.column_dimensions[get_column_letter(col)].width = 14
     
-    # Save to buffer or file
-    if output_buffer is not None:
+    # =========================================================================
+    # TAB 6: CROSS_REFERENCE (Upstream Dashboard KPIs)
+    # =========================================================================
+    ws6 = wb.create_sheet("CROSS_REFERENCE")
+    
+    ws6['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Dashboard KPIs"
+    ws6['A1'].font = title_font
+    ws6['A2'] = "Key metrics from other dashboards affecting cash flow. Data from shared_outputs.json."
+    ws6['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared outputs
+    try:
+        shared_data = import_dashboard_data('CMO') if import_dashboard_data else {}
+        cmo_data_shared = shared_data or {}
+        prod_data_shared = (import_dashboard_data('Production') or {}) if import_dashboard_data else {}
+        purch_data_shared = (import_dashboard_data('Purchasing') or {}) if import_dashboard_data else {}
+        clo_data_shared = (import_dashboard_data('CLO') or {}) if import_dashboard_data else {}
+        cpo_data_shared = (import_dashboard_data('CPO') or {}) if import_dashboard_data else {}
+        esg_data_shared = (import_dashboard_data('ESG') or {}) if import_dashboard_data else {}
+    except:
+        cmo_data_shared = prod_data_shared = purch_data_shared = clo_data_shared = cpo_data_shared = esg_data_shared = {}
+    
+    row = 4
+    
+    # CMO Section (Revenue & Marketing)
+    ws6.cell(row=row, column=1, value="CMO (Revenue & Marketing)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    rev = cmo_data_shared.get('est_revenue', 0)
+    
+    cmo_metrics = [
+        ("Projected Revenue", rev, "$#,##0"),
+        ("Marketing Spend", cmo_data_shared.get('marketing_spend', 0) if cmo_data_shared else 0, "$#,##0"),
+        ("Innovation Costs", cmo_data_shared.get('innovation_costs', 0) if cmo_data_shared else 0, "$#,##0"),
+    ]
+    for label, value, fmt in cmo_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+    
+    row += 1
+    
+    # Production Section
+    ws6.cell(row=row, column=1, value="PRODUCTION (Output)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    prod_plan = prod_data_shared.get('production_plan', {}) if prod_data_shared else {}
+    total_production = sum(prod_plan.values()) if prod_plan else 0
+    unit_costs = prod_data_shared.get('unit_costs', {}) if prod_data_shared else {}
+    avg_cost = sum(unit_costs.values()) / len(unit_costs) if unit_costs else 0
+    
+    prod_metrics = [
+        ("Total Production", total_production, "#,##0"),
+        ("Avg Unit Cost", avg_cost, "$#,##0.00"),
+        ("Utilization", prod_data_shared.get('capacity_utilization', 0) if prod_data_shared else 0, "0.0%"),
+    ]
+    for label, value, fmt in prod_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+    
+    row += 1
+    
+    # Cost Aggregation (COGS Drivers)
+    ws6.cell(row=row, column=1, value="COST DRIVERS (Variable)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    labor_cost = cpo_data_shared.get('payroll_forecast', 0) # Using payroll forecast as proxy for total labor cost
+    material_cost = purch_data_shared.get('supplier_spend', 0)
+    logistics_cost = clo_data_shared.get('logistics_costs', 0)
+    
+    cogs_metrics = [
+        ("Labor (CPO)", labor_cost, "$#,##0"),
+        ("Materials (Purchasing)", material_cost, "$#,##0"),
+        ("Logistics (CLO)", logistics_cost, "$#,##0"),
+        ("TOTAL VARIABLE EST.", labor_cost + material_cost + logistics_cost, "$#,##0")
+    ]
+    
+    for label, value, fmt in cogs_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+
+    row += 1
+
+    # ESG Section
+    ws6.cell(row=row, column=1, value="ESG (Sustainability)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    esg_metrics = [
+        ("CO2 Emissions", esg_data_shared.get('co2_emissions', 0) if esg_data_shared else 0, "#,##0"),
+        ("Tax Liability", esg_data_shared.get('tax_liability', 0) if esg_data_shared else 0, "$#,##0"),
+    ]
+    for label, value, fmt in esg_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+
+    # Formatting
+    for col in ['A', 'B']:
+        ws6.column_dimensions[col].width = 35
+
+    # Save
+    if output_buffer:
         wb.save(output_buffer)
-        output_buffer.seek(0)
         return output_buffer
     else:
         wb.save(OUTPUT_FILE)
@@ -1400,6 +1529,14 @@ def main():
     print("  * BALANCE_SHEET_HEALTH (Solvency & Debt)")
     print("  * DEBT_MANAGER (Mortgage Calculator)")
     print("  * UPLOAD_READY_FINANCE (ExSim Format)")
+    
+    # Export key metrics for use by other systems
+    if export_dashboard_data:
+        export_dashboard_data('CFO', {
+            'cash_flow_projection': cash_data,
+            'debt_levels': balance_data.get('total_debt', 0),
+            'liquidity_status': 'OK' if cash_data.get('ending_cash', 0) > 0 else 'LOW'
+        })
 
 
 if __name__ == "__main__":

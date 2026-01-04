@@ -21,10 +21,17 @@ import sys
 # Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import WORKFORCE
+    from case_parameters import WORKFORCE, COMMON
 except ImportError:
     print("Warning: Could not import case_parameters.py. Using defaults.")
     WORKFORCE = {}
+    COMMON = {}
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -57,7 +64,8 @@ def get_data_path(filename):
 
 OUTPUT_FILE = "CPO_Dashboard.xlsx"
 
-ZONES = ["Center", "West", "North", "East", "South"]
+# Use centralized constants from case_parameters
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
 
 # Default parameters
 # Default parameters from Case if available
@@ -249,7 +257,7 @@ def load_labor_costs(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate):
+def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate, output_buffer=None, decision_overrides=None):
     """Create the CPO Workforce Dashboard using openpyxl."""
     
     wb = Workbook()
@@ -345,12 +353,20 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate)
         cell.border = thin_border
         
         # Required Workers (input)
-        cell = ws1.cell(row=zone_row, column=3, value=workers)
+        req_val = workers
+        if decision_overrides and 'workforce' in decision_overrides:
+             req_val = decision_overrides['workforce'].get(zone, {}).get('required', workers)
+        
+        cell = ws1.cell(row=zone_row, column=3, value=req_val)
         cell.fill = input_fill
         cell.border = thin_border
         
         # Est. Turnover %
-        cell = ws1.cell(row=zone_row, column=4, value=0)
+        turnover_val = 0
+        if decision_overrides and 'workforce' in decision_overrides:
+             turnover_val = decision_overrides['workforce'].get(zone, {}).get('turnover', 0)
+             
+        cell = ws1.cell(row=zone_row, column=4, value=turnover_val)
         cell.fill = input_fill
         cell.border = thin_border
         cell.number_format = '0.0%'
@@ -579,6 +595,10 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate)
         
         # Proposed New Salary
         proposed = int(DEFAULT_BASE_SALARY * (1 + DEFAULT_INFLATION_RATE + 0.01))
+        
+        if decision_overrides and 'salary' in decision_overrides:
+             proposed = decision_overrides['salary'].get(zone, proposed)
+        
         cell = ws2.cell(row=zone_row, column=4, value=proposed)
         cell.fill = input_fill
         cell.border = thin_border
@@ -972,9 +992,73 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate)
         cell.fill = calc_fill
         cell.border = thin_border
 
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    # =========================================================================
+    # TAB 4: CROSS_REFERENCE (Upstream Data)
+    # =========================================================================
+    ws4 = wb.create_sheet("CROSS_REFERENCE")
+    
+    ws4['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
+    ws4['A1'].font = title_font
+    ws4['A2'] = "Key metrics from Production and Finance."
+    ws4['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        cfo_data = import_dashboard_data('CFO') or {}
+    except ImportError:
+        prod_data = {}
+        cfo_data = {}
+    
+    row = 4
+    
+    # Production Section
+    ws4.cell(row=row, column=1, value="Production (Targets)").font = section_font
+    ws4.cell(row=row, column=1).fill = PatternFill(start_color="1565C0", end_color="1565C0", fill_type="solid") # Blue
+    ws4.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    prod_metrics = [
+        ("Total Production Target", f"{sum([d.get('Target',0) for d in prod_data.get('production_plan', {}).values()]) if prod_data and 'production_plan' in prod_data else 'N/A'}"),
+        ("Overtime Hours", f"{prod_data.get('overtime_hours', 0):,.0f}" if prod_data else "N/A"),
+    ]
+    
+    for label, value in prod_metrics:
+        ws4.cell(row=row, column=1, value=label).border = thin_border
+        ws4.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+        
+    row += 2
+    
+    # CFO Section
+    ws4.cell(row=row, column=1, value="Finance (Payroll Budget)").font = section_font
+    ws4.cell(row=row, column=1).fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid") # Green
+    ws4.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    cfo_metrics = [
+        ("Cash Availability", "Check Finance Dashboard"),
+        ("Liquidity Status", cfo_data.get('liquidity_status', 'Unknown') if cfo_data else "Unknown"),
+    ]
+    
+    for label, value in cfo_metrics:
+        ws4.cell(row=row, column=1, value=label).border = thin_border
+        ws4.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+
+    # Formatting
+    for col in ['A', 'B']:
+        ws4.column_dimensions[col].width = 30
+
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
 def main():
@@ -1029,6 +1113,15 @@ def main():
     print("  * COMPENSATION_STRATEGY (Salaries, Strikes, Benefits)")
     print("  * LABOR_COST_ANALYSIS (Total Expense Breakdown)")
     print("  * UPLOAD_READY_PEOPLE (ExSim Format)")
+    
+    # Export key metrics for downstream dashboards
+    if export_dashboard_data:
+        total_workers = sum(workers_data.get(zone, {}).get('workers', 0) for zone in ZONES)
+        export_dashboard_data('CPO', {
+            'workforce_headcount': {zone: workers_data.get(zone, {}).get('workers', 0) for zone in ZONES},
+            'payroll_forecast': total_workers * DEFAULT_BASE_SALARY * 2,  # 2 fortnights
+            'hiring_costs': 0  # Calculated from dashboard inputs
+        })
 
 
 if __name__ == "__main__":

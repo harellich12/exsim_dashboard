@@ -15,8 +15,15 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state
 
-# Constants
-ZONES = ['Center', 'West', 'North', 'East', 'South']
+# Import centralized constants from case_parameters
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import COMMON
+    ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
+except ImportError:
+    ZONES = ['Center', 'West', 'North', 'East', 'South']
 
 # Default HR Parameters
 HR_CONFIG = {
@@ -444,12 +451,70 @@ def render_upload_ready_people():
         st.success("✅ Data copied! Paste into ExSim People form.")
 
 
+def render_cross_reference():
+    """Render CROSS_REFERENCE sub-tab - Upstream data visibility."""
+    st.subheader("🔗 CROSS REFERENCE - Upstream Support")
+    st.caption("Live visibility into Production targets and Finance limits.")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        cfo_data = import_dashboard_data('CFO') or {}
+    except ImportError:
+        st.error("Could not load shared_outputs module")
+        prod_data = {}
+        cfo_data = {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🏭 Production (Targets)")
+        st.info("Staffing needed to meet these targets.")
+        
+        # Extract Production Plan Target Sum
+        try:
+            prod_plan = prod_data.get('production_plan', {})
+            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            overtime = prod_data.get('overtime_hours', 0)
+        except:
+            total_target = 0
+            overtime = 0
+            
+        st.metric("Total Production Target", f"{total_target:,.0f} units")
+        st.metric("Est. Overtime Needed", f"{overtime:,.0f} hours")
+
+    with col2:
+        st.markdown("### 💰 Finance (Payroll Budget)")
+        st.info("Do we have cash for salaries?")
+        
+        liquidity = cfo_data.get('liquidity_status', 'Unknown')
+        
+        st.metric("Liquidity Status", liquidity)
+        
+        if "CRITICAL" in liquidity:
+            st.error(f"🔴 {liquidity} - Freeze Hiring!")
+        elif "Stable" in liquidity:
+            st.success(f"🟢 {liquidity} - Hiring OK")
+        else:
+            st.info(f"ℹ️ {liquidity}")
+
+
 def render_cpo_tab():
     """Render the CPO (People) tab with 4 Excel-aligned subtabs."""
     init_cpo_state()
     sync_from_uploads()
     
-    st.header("👥 CPO Dashboard - Workforce Planning & Compensation")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("👥 CPO Dashboard - Workforce Planning & Compensation")
+    with col_download:
+        try:
+            from utils.report_bridge import create_download_button
+            create_download_button('CPO', 'People')
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Data source status
     workers_data = get_state('workers_data')
@@ -464,12 +529,13 @@ def render_cpo_tab():
     if costs['strike_risk_zones']:
         st.error(f"🔴 **STRIKE RISK in: {', '.join(costs['strike_risk_zones'])}**")
     
-    # 4 SUBTABS - Matching Excel logic
+    # 5 SUBTABS (Updated)
     subtabs = st.tabs([
         "👷 Workforce Planning",
         "💰 Compensation Strategy",
         "📊 Labor Cost Analysis",
-        "📤 Upload Ready"
+        "📤 Upload Ready",
+        "🔗 Cross Reference"
     ])
     
     with subtabs[0]:
@@ -483,3 +549,6 @@ def render_cpo_tab():
     
     with subtabs[3]:
         render_upload_ready_people()
+        
+    with subtabs[4]:
+        render_cross_reference()

@@ -20,10 +20,17 @@ import sys
 # Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import ESG as ESG_PARAMS
+    from case_parameters import ESG as ESG_PARAMS, COMMON
 except ImportError:
     print("Warning: Could not import case_parameters.py. Using defaults.")
     ESG_PARAMS = {}
+    COMMON = {}
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -169,7 +176,7 @@ def load_production_data(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_esg_dashboard(esg_data, production_data):
+def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision_overrides=None):
     """Create the ESG Dashboard using openpyxl."""
     
     wb = Workbook()
@@ -334,12 +341,16 @@ def create_esg_dashboard(esg_data, production_data):
         cell.border = thin_border
         
         # Quantity (input)
+        qty = 0
+        if decision_overrides and name in decision_overrides:
+             qty = decision_overrides[name]
+             
         if name == "Green Electricity":
             # Percentage input for green electricity
-            cell = ws2.cell(row=row, column=2, value=0)  # 0%
+            cell = ws2.cell(row=row, column=2, value=qty)  # 0%
             cell.number_format = '0%'
         else:
-            cell = ws2.cell(row=row, column=2, value=0)
+            cell = ws2.cell(row=row, column=2, value=qty)
         cell.fill = input_fill
         cell.border = thin_border
         
@@ -625,9 +636,75 @@ def create_esg_dashboard(esg_data, production_data):
     ws3.column_dimensions['D'].width = 15
     ws3.column_dimensions['E'].width = 15
 
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    ws3.column_dimensions['E'].width = 15
+
+    # =========================================================================
+    # TAB 5: CROSS_REFERENCE (Upstream Data)
+    # =========================================================================
+    ws5 = wb.create_sheet("CROSS_REFERENCE")
+    
+    ws5['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
+    ws5['A1'].font = Font(bold=True, size=14, color="2F5496")
+    ws5['A2'] = "Key metrics from Production and Logistics."
+    ws5['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        clo_data = import_dashboard_data('CLO') or {}
+    except ImportError:
+        prod_data = {}
+        clo_data = {}
+    
+    row = 4
+    
+    # Production Section
+    ws5.cell(row=row, column=1, value="Production (Output)").font = Font(bold=True, size=12, color="2F5496")
+    ws5.cell(row=row, column=1).fill = PatternFill(start_color="1565C0", end_color="1565C0", fill_type="solid") # Blue
+    ws5.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    prod_metrics = [
+        ("Total Production", f"{sum([d.get('Target',0) for d in prod_data.get('production_plan', {}).values()]) if prod_data and 'production_plan' in prod_data else 'N/A'}"),
+        ("Avg Utilization", f"{prod_data.get('capacity_utilization', {}).get('mean', 0)*100:.1f}%" if prod_data else "N/A"),
+    ]
+    
+    for label, value in prod_metrics:
+        ws5.cell(row=row, column=1, value=label).border = thin_border
+        ws5.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+        
+    row += 2
+    
+    # CLO Section
+    ws5.cell(row=row, column=1, value="Logistics (Transport)").font = Font(bold=True, size=12, color="2F5496")
+    ws5.cell(row=row, column=1).fill = PatternFill(start_color="EF6C00", end_color="EF6C00", fill_type="solid") # Orange
+    ws5.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    clo_metrics = [
+        ("Logistics Costs", f"${clo_data.get('logistics_costs', 0):,.0f}" if clo_data else "N/A"),
+        ("Shipping Volume", "See CLO Dashboard"),
+    ]
+    
+    for label, value in clo_metrics:
+        ws5.cell(row=row, column=1, value=label).border = thin_border
+        ws5.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+
+    # Formatting
+    for col in ['A', 'B']:
+        ws5.column_dimensions[col].width = 30
+
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
 def main():
@@ -664,6 +741,14 @@ def main():
     print("\nSheets created:")
     print("  * IMPACT_CONFIG (Initiative Specs)")
     print("  * STRATEGY_SELECTOR (ROI Calculator & Abatement Curve)")
+    
+    # Export key metrics for downstream dashboards
+    if export_dashboard_data:
+        export_dashboard_data('ESG', {
+            'co2_emissions': esg_data.get('emissions', 0),
+            'abatement_investment': 0,  # Calculated from dashboard inputs
+            'tax_liability': esg_data.get('tax_paid', 0)
+        })
 
 
 if __name__ == "__main__":

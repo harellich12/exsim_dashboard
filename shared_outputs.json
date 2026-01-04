@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "created": "2026-01-04T16:32:48.523227",
+    "last_updated": "2026-01-04T17:17:53.494601",
+    "version": "1.0"
+  },
+  "dashboards": {
+    "CMO": {
+      "timestamp": "2026-01-04T16:32:48.537437",
+      "outputs": {
+        "demand_forecast": {
+          "Center": 0,
+          "West": 0,
+          "North": 0,
+          "East": 0,
+          "South": 0
+        },
+        "marketing_spend": 0,
+        "pricing": {
+          "Center": 0,
+          "West": 0,
+          "North": 0,
+          "East": 0,
+          "South": 0
+        },
+        "innovation_costs": 0
+      }
+    },
+    "CLO": {
+      "timestamp": "2026-01-04T17:17:53.205113",
+      "outputs": {
+        "shipping_schedule": {},
+        "logistics_costs": 0,
+        "inventory_by_zone": {
+          "Center": 0.0,
+          "West": 0.0,
+          "North": 0.0,
+          "East": 0.0,
+          "South": 0.0
+        }
+      }
+    },
+    "CFO": {
+      "timestamp": "2026-01-04T17:17:53.494601",
+      "outputs": {
+        "cash_flow_projection": {
+          "final_cash": 500000,
+          "tax_payments": 50000
+        },
+        "debt_levels": 0,
+        "liquidity_status": "OK"
+      }
+    }
+  }
+}

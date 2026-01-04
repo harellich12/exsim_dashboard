@@ -491,31 +491,84 @@ def load_initial_cash_flow(file) -> Dict[str, Any]:
 
 
 def load_logistics_data(file) -> Dict[str, Any]:
-    """Load logistics.xlsx - Logistics input for shipping/transport data."""
+    """
+    Load logistics.xlsx - Logistics input for shipping costs and warehouse penalties.
+    Extracts:
+    1. 'benchmarks': Route costs (Transport Costs table)
+    2. 'penalties': Warehouse rent costs (Incoming/Outcoming table)
+    3. 'shipping_costs': Shipping costs per zone (legacy)
+    """
     try:
         df = pd.read_excel(file, header=None)
-        data = {'zones': {}, 'shipping_costs': {}, 'raw_df': df}
+        data = {
+            'zones': {}, 
+            'shipping_costs': {}, 
+            'benchmarks': {},  # NEW: Route costs (e.g. Center-North Train)
+            'penalties': {},   # NEW: Zone warehouse costs
+            'raw_df': df
+        }
         
         zones = ['Center', 'West', 'North', 'East', 'South']
+        
+        # 1. Parse Transportation Costs (Benchmarks)
+        in_transport_section = False
         for idx, row in df.iterrows():
-            first_val = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ''
+            label = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
             
-            if 'shipping' in first_val or 'transport' in first_val:
+            if "Transportation Costs" in label:
+                in_transport_section = True
+                continue
+            
+            if in_transport_section:
+                if "Type" in label or "Subtotal" in label or label == "Total":
+                    if label == "Total": in_transport_section = False
+                    continue
+                
+                # Route row (e.g. "Train Center-North")
+                if label:
+                    route = label
+                    units = parse_numeric(row.iloc[1]) if len(row) > 1 else 0
+                    total = parse_numeric(row.iloc[3]) if len(row) > 3 else 0
+                    
+                    if units > 0:
+                        cost_per_unit = total / units
+                        # Aggregate average if duplicate routes appear
+                        if route in data['benchmarks']:
+                            data['benchmarks'][route] = (data['benchmarks'][route] + cost_per_unit) / 2
+                        else:
+                            data['benchmarks'][route] = cost_per_unit
+        
+        # 2. Parse Warehouse Penalties & Shipping Costs
+        for idx, row in df.iterrows():
+            label = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            
+            # Shipping Costs (Legacy / Direct map)
+            if 'shipping' in label.lower() or 'transport' in label.lower():
                 for z_idx, zone in enumerate(zones):
                     if z_idx + 1 < len(row):
                         data['shipping_costs'][zone] = parse_numeric(row.iloc[z_idx + 1])
-            
-            if 'warehouse' in first_val or 'storage' in first_val:
-                for z_idx, zone in enumerate(zones):
-                    if z_idx + 1 < len(row):
-                        if zone not in data['zones']:
-                            data['zones'][zone] = {}
-                        data['zones'][zone]['warehouse_cost'] = parse_numeric(row.iloc[z_idx + 1])
+
+            # Warehouse Penalties from "Incoming and Outcoming by Zone" table
+            if "Incoming and Outcoming by Zone" in label:
+                # Data starts 2 rows down
+                for offset in range(2, 10):
+                    if idx + offset < len(df):
+                        data_row = df.iloc[idx + offset]
+                        zone_label = str(data_row.iloc[0]).strip() if pd.notna(data_row.iloc[0]) else ""
+                        
+                        if zone_label in zones:
+                            # Warehouse costs usually in column 5 (index 5)
+                            warehouse_cost = parse_numeric(data_row.iloc[5]) if len(data_row) > 5 else 0
+                            if warehouse_cost > 0:
+                                data['penalties'][zone_label] = warehouse_cost
+                                if zone_label not in data['zones']:
+                                    data['zones'][zone_label] = {}
+                                data['zones'][zone_label]['warehouse_cost'] = warehouse_cost
         
         return data
     except Exception as e:
         st.warning(f"Error loading logistics data: {e}")
-        return {'zones': {}, 'shipping_costs': {}, 'raw_df': None}
+        return {'zones': {}, 'shipping_costs': {}, 'benchmarks': {}, 'penalties': {}, 'raw_df': None}
 
 
 def load_machine_spaces(file) -> Dict[str, Any]:

@@ -15,10 +15,19 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state
 
-# Constants
-ZONES = ['Center', 'West', 'North', 'East', 'South']
-FORTNIGHTS = list(range(1, 9))
-TRANSPORT_MODES = ['Train', 'Truck', 'Plane']
+# Import centralized constants from case_parameters
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import COMMON
+    ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
+    FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+    TRANSPORT_MODES = COMMON.get('TRANSPORT_MODES', ['Train', 'Truck', 'Plane'])
+except ImportError:
+    ZONES = ['Center', 'West', 'North', 'East', 'South']
+    FORTNIGHTS = list(range(1, 9))
+    TRANSPORT_MODES = ['Train', 'Truck', 'Plane']
 
 # Transport Mode Configuration
 TRANSPORT_CONFIG = {
@@ -41,17 +50,26 @@ def init_logistics_state():
         st.session_state.logistics_initialized = True
         
         fg_data = get_state('finished_goods_data')
+        log_data = get_state('logistics_data')
+        
+        # Load benchmarks and penalties
+        st.session_state.logistics_benchmarks = log_data.get('benchmarks', {}) if log_data else {}
+        st.session_state.logistics_penalties = log_data.get('penalties', {}) if log_data else {}
         
         # Warehouse configuration per zone
         warehouse_data = []
         for zone in ZONES:
             capacity = fg_data.get('zones', {}).get(zone, {}).get('capacity', 1000) if fg_data else 1000
+            # Check for penalty
+            penalty = st.session_state.logistics_penalties.get(zone, 0)
+            
             warehouse_data.append({
                 'Zone': zone,
                 'Current_Capacity': capacity,
                 'Buy_Modules': 0,
                 'Rent_Modules': 0,
-                'Total_Capacity': capacity
+                'Total_Capacity': capacity,
+                'Last_Rent_Penalty': penalty
             })
         st.session_state.logistics_warehouses = pd.DataFrame(warehouse_data)
         
@@ -198,6 +216,118 @@ def render_route_config():
         st.metric("Rent Cost (Per Period)", f"${rent_cost:,.0f}")
     with col3:
         st.metric("Total Warehouse Cost", f"${buy_cost + rent_cost:,.0f}")
+
+
+def render_route_optimizer():
+    """Render ROUTE_OPTIMIZER sub-tab - Transport Mode Matrix & Calculator."""
+    st.subheader("🚀 ROUTE OPTIMIZER - Transport Physics")
+    
+    st.markdown("### 📊 Lowest Cost Transport Matrix")
+    
+    benchmarks = st.session_state.get('logistics_benchmarks', {})
+    
+    # Build 5x5 Matrix
+    matrix_data = []
+    zones = ['Center', 'West', 'North', 'East', 'South']
+    
+    for origin in zones:
+        row = {'Origin': origin}
+        for dest in zones:
+            if origin == dest:
+                row[dest] = "-"
+                continue
+            
+            # Find best mode from benchmarks
+            # Benchmark keys format: "Train Center-North" or "Truck West-South" etc.
+            # We need to scan keys to find matches for this OD pair
+            best_cost = 999999
+            best_mode = "N/A"
+            
+            for mode in ['Train', 'Truck', 'Airplane']:
+                # Try various key formats as they might appear in Excel
+                # Usually: "{Mode} {Origin}-{Destination}"
+                key_candidates = [
+                    f"{mode} {origin}-{dest}",
+                    f"{mode} {origin} - {dest}",
+                    f"{mode} {origin} to {dest}",
+                    f"{mode} ({origin} - {dest})",  # Matches Excel format: "Train (Center - North)"
+                    f"{mode} ({origin}-{dest})"
+                ]
+                
+                cost = 0
+                for k in key_candidates:
+                     if k in benchmarks:
+                         cost = benchmarks[k]
+                         break
+                
+                # Fallback to default if not found (Test Mode / No Data)
+                if cost == 0:
+                     cost = TRANSPORT_CONFIG.get(mode, {}).get('cost_per_unit', 99)
+                
+                if cost < best_cost:
+                    best_cost = cost
+                    best_mode = mode
+            
+            row[dest] = f"{best_mode} (${best_cost:.2f})"
+        
+        matrix_data.append(row)
+    
+    matrix_df = pd.DataFrame(matrix_data)
+    st.dataframe(matrix_df, hide_index=True, width='stretch')
+    
+    st.markdown("### 🧮 Route Calculator")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        origin = st.selectbox("From (Origin)", zones, key='calc_origin')
+    with c2:
+        dest = st.selectbox("To (Destination)", zones, key='calc_dest')
+    
+    if origin == dest:
+        st.warning("Origin and Destination are the same.")
+    else:
+        results = []
+        for mode in ['Train', 'Truck', 'Airplane']:
+            # Look up specific route cost
+            # key = f"{mode} {origin}-{dest}" 
+            # Fuzzy match attempt with multiple formats
+            cost = 0
+            
+            # Exact match candidates
+            candidates = [
+                 f"{mode} {origin}-{dest}",
+                 f"{mode} {origin} - {dest}",
+                 f"{mode} ({origin} - {dest})",
+                 f"{mode} ({origin}-{dest})"
+            ]
+            
+            for k in candidates:
+                if k in benchmarks:
+                    cost = benchmarks[k]
+                    break
+            
+            # Fallback fuzzy match if exact fails
+            if cost == 0:
+                for k in benchmarks:
+                    if mode in k and origin in k and dest in k:
+                        cost = benchmarks[k]
+                        break
+            
+            # Fallback to default
+            if cost == 0:
+                cost = TRANSPORT_CONFIG.get(mode, {}).get('cost_per_unit', 0)
+            
+            lead_time = TRANSPORT_CONFIG.get(mode, {}).get('lead_time', 0)
+            
+            results.append({
+                'Mode': mode,
+                'Cost Per Unit': cost,
+                'Lead Time': f"{lead_time} FN",
+                'Total (1000 units)': cost * 1000
+            })
+        
+        res_df = pd.DataFrame(results)
+        st.table(res_df.style.format({'Cost Per Unit': '${:.2f}', 'Total (1000 units)': '${:,.0f}'}))
 
 
 def render_inventory_tetris():
@@ -459,6 +589,52 @@ def render_upload_ready_logistics():
         st.success("✅ Data copied! Paste into ExSim Logistics form.")
 
 
+def render_cross_reference():
+    """Render CROSS_REFERENCE sub-tab - Upstream data visibility."""
+    st.subheader("🔗 CROSS REFERENCE - Upstream Support")
+    st.caption("Live visibility into Purchasing arrivals and CMO demand.")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        purch_data = import_dashboard_data('Purchasing') or {}
+        cmo_data = import_dashboard_data('CMO') or {}
+    except ImportError:
+        st.error("Could not load shared_outputs module")
+        purch_data = {}
+        cmo_data = {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📦 Purchasing (Incoming Stock)")
+        st.info("Goods arriving that need warehousing.")
+        
+        spend = purch_data.get('supplier_spend', 0)
+        
+        st.metric("Total Supplier Spend", f"${spend:,.0f}")
+        
+        if spend > 0:
+            st.success("✅ Purchasing is Active")
+        else:
+            st.warning("⚠️ No Purchases detected")
+
+    with col2:
+        st.markdown("### 📢 CMO (Demand Forecast)")
+        st.info("Demand driving your shipping requirements.")
+        
+        mkt_spend = cmo_data.get('marketing_spend', 0)
+        
+        st.metric("Marketing Spend", f"${mkt_spend:,.0f}")
+        
+        # Show demand per zone if available
+        demand_forecast = cmo_data.get('demand_forecast', {})
+        if demand_forecast:
+            st.markdown("**Demand by Zone:**")
+            df = pd.DataFrame(list(demand_forecast.items()), columns=['Zone', 'Demand'])
+            st.dataframe(df, hide_index=True)
+
+
 def render_logistics_tab():
     """Render the CLO (Logistics) tab with 4 Excel-aligned subtabs."""
     init_logistics_state()
@@ -481,7 +657,12 @@ def render_logistics_tab():
                 use_container_width=True
             )
         except Exception as e:
-            st.error(f"Export: {e}")
+            try:
+                # Fallback to simple create_download_button if ReportBridge fails or method changes
+                from utils.report_bridge import create_download_button
+                create_download_button('CLO', 'Logistics')
+            except:
+                st.error(f"Export: {e}")
     
     # Data source status
     fg_data = get_state('finished_goods_data')
@@ -495,22 +676,30 @@ def render_logistics_tab():
     else:
         st.info("💡 Upload Finished Goods Inventory in sidebar to populate data")
     
-    # 4 SUBTABS - Matching Excel sheets exactly
+    # 6 SUBTABS (Updated)
     subtabs = st.tabs([
         "🛣️ Route Config",
+        "🚀 Route Optimizer",
         "🧩 Inventory Tetris",
         "📦 Shipment Builder",
-        "📤 Upload Ready"
+        "📤 Upload Ready",
+        "🔗 Cross Reference"
     ])
     
     with subtabs[0]:
         render_route_config()
-    
+        
     with subtabs[1]:
-        render_inventory_tetris()
+        render_route_optimizer()
     
     with subtabs[2]:
-        render_shipment_builder()
+        render_inventory_tetris()
     
     with subtabs[3]:
+        render_shipment_builder()
+    
+    with subtabs[4]:
         render_upload_ready_logistics()
+        
+    with subtabs[5]:
+        render_cross_reference()

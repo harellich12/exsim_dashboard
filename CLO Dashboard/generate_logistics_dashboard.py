@@ -20,10 +20,17 @@ import sys
 # Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import LOGISTICS
+    from case_parameters import LOGISTICS, COMMON
 except ImportError:
     print("Warning: Could not import case_parameters.py. Using defaults.")
     LOGISTICS = {}
+    COMMON = {}
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -56,9 +63,10 @@ def get_data_path(filename):
 
 OUTPUT_FILE = "Logistics_Dashboard.xlsx"
 
-FORTNIGHTS = list(range(1, 9))  # 1-8
-ZONES = ["Center", "West", "North", "East", "South"]
-TRANSPORT_MODES = ["Train", "Truck", "Plane"]
+# Use centralized constants from case_parameters
+FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
+TRANSPORT_MODES = COMMON.get('TRANSPORT_MODES', ["Train", "Truck", "Plane"])
 DEFAULT_MATERIAL = "Electroclean"
 
 # Default transport configuration
@@ -1029,6 +1037,23 @@ def main():
     print("  * INVENTORY_TETRIS (Zone Balancing & Stockout Checks)")
     print("  * SHIPMENT_BUILDER (Transfer Planning + Cost Benchmarks)")
     print("  * UPLOAD_READY_LOGISTICS (ExSim Format)")
+    print("  * CROSS_REFERENCE (Upstream Data)") # Added this line to reflect the new tab
+    
+    # Export key metrics for downstream dashboards
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Assuming total_logistics_cost is calculated somewhere or derived from cost_data
+        # For now, using cost_data.get('total_shipping_cost', 0) as a placeholder
+        total_logistics_cost = cost_data.get('total_shipping_cost', 0) 
+
+        export_dashboard_data('CLO', {
+            'shipping_schedule': "See Shipment Builder",
+            'logistics_costs': total_logistics_cost,
+            'inventory_by_zone': "See Inventory Tetris"
+        })
+    except ImportError:
+        print("Warning: shared_outputs not found, skipping export")
 
 
 if __name__ == "__main__":
