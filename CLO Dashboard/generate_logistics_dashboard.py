@@ -259,8 +259,21 @@ def load_logistics_intelligence(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_logistics_dashboard(inventory_data, template_data, cost_data, intelligence_data=None):
-    """Create the Logistics Dashboard with Historical Intelligence."""
+def create_logistics_dashboard(inventory_data, template_data, cost_data, intelligence_data=None, output_buffer=None):
+    """
+    Create the Logistics Dashboard with Historical Intelligence.
+    
+    Args:
+        inventory_data: Inventory data by zone
+        template_data: Template configuration
+        cost_data: Shipping cost data
+        intelligence_data: Historical intelligence data (optional)
+        output_buffer: io.BytesIO buffer for output (optional). If provided, returns
+                      the buffer instead of saving to disk.
+    
+    Returns:
+        BytesIO buffer if output_buffer provided, None otherwise
+    """
     
     # Handle missing intelligence data
     if intelligence_data is None:
@@ -947,9 +960,15 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
             
         row += 1
 
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        return output_buffer
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+        return None
 
 
 def main():

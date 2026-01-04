@@ -464,7 +464,24 @@ def render_logistics_tab():
     init_logistics_state()
     sync_from_uploads()
     
-    st.header("🚚 CLO Dashboard - Supply Network Optimization")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("🚚 CLO Dashboard - Supply Network Optimization")
+    with col_download:
+        try:
+            from utils.report_bridge import ReportBridge
+            excel_buffer = ReportBridge.export_logistics_dashboard()
+            st.download_button(
+                label="📥 Download Live",
+                data=excel_buffer,
+                file_name="Logistics_Dashboard_Live.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Data source status
     fg_data = get_state('finished_goods_data')

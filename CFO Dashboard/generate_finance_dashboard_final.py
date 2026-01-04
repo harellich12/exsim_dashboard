@@ -416,8 +416,23 @@ def load_retained_earnings(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data, hard_data=None):
-    """Create the Finance Dashboard with Hard Data injection."""
+def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data, hard_data=None, output_buffer=None):
+    """
+    Create the Finance Dashboard with Hard Data injection.
+    
+    Args:
+        cash_data: Cash flow data dict
+        balance_data: Balance sheet data dict
+        sa_data: Sales & Admin expenses dict
+        ar_ap_data: Accounts receivable/payable dict
+        template_data: Template configuration
+        hard_data: Hard data values dict (optional)
+        output_buffer: io.BytesIO buffer for output (optional). If provided, returns
+                      the buffer instead of saving to disk.
+    
+    Returns:
+        BytesIO buffer if output_buffer provided, None otherwise
+    """
     
     # Handle missing hard_data
     if hard_data is None:
@@ -1268,9 +1283,15 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     for col in range(1, 10):
         ws5.column_dimensions[get_column_letter(col)].width = 14
     
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        return output_buffer
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+        return None
 
 
 def main():

@@ -618,7 +618,24 @@ def render_cfo_tab():
     init_cfo_state()
     sync_from_uploads()
     
-    st.header("💰 CFO Dashboard - Financial Control & Liquidity")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("💰 CFO Dashboard - Financial Control & Liquidity")
+    with col_download:
+        try:
+            from utils.report_bridge import ReportBridge
+            excel_buffer = ReportBridge.export_finance_dashboard()
+            st.download_button(
+                label="📥 Download Live",
+                data=excel_buffer,
+                file_name="Finance_Dashboard_Live.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Data source status
     balance = get_state('balance_data')
