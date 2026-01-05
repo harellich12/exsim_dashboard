@@ -786,3 +786,37 @@ def render_cfo_tab():
         
     with subtabs[5]:
         render_cross_reference()
+    
+    # ---------------------------------------------------------
+    # EXSIM SHARED OUTPUTS - EXPORT
+    # ---------------------------------------------------------
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate final outputs for export
+        # 'cash_flow_projection', 'debt_levels', 'liquidity_status'
+        
+        # Liquidity Status (Projected FN8 or FN1? Or min?)
+        # Let's take the status of the first period or the worst status?
+        # Typically the 'Next Period' is most relevant (FN1)
+        results_df = calculate_cash_flow()
+        fn1_status = results_df.at[0, 'Status']
+        final_cash = results_df.at[0, 'Closing']
+        
+        # Debt Levels
+        # Total Borrowed / Total Assets? Or just total amount?
+        # Schema: "debt_levels": "835497" (string?) or number. 
+        # Using string in example, allow flexible.
+        total_debt = st.session_state.cfo_total_liabilities
+        
+        outputs = {
+            'cash_flow_projection': {'final_cash': final_cash, 'tax_payments': st.session_state.cfo_tax_payments},
+            'debt_levels': total_debt,
+            'liquidity_status': fn1_status
+        }
+        
+        export_dashboard_data('CFO', outputs)
+        
+    except Exception as e:
+        print(f"Shared Output Export Error: {e}")
+

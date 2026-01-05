@@ -816,3 +816,48 @@ def render_logistics_tab():
         
     with subtabs[5]:
         render_cross_reference()
+    
+    # ---------------------------------------------------------
+    # EXSIM SHARED OUTPUTS - EXPORT
+    # ---------------------------------------------------------
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate final outputs for export
+        # Shipping Schedule: dict by FN? Or just totals
+        # "shipping_schedule": {}, "logistics_costs": 0, "inventory_by_zone": {}
+        
+        # 1. Logistics Costs
+        # Usually from state. 'shipping_cost' + 'warehouse_cost'
+        shipping_cost = st.session_state.get('shipping_cost', 0)
+        # Calculate warehouse cost
+        buy_cost = st.session_state.logistics_warehouses['Buy_Modules'].sum() * WAREHOUSE_CONFIG['buy_cost']
+        rent_cost = st.session_state.logistics_warehouses['Rent_Modules'].sum() * WAREHOUSE_CONFIG['rent_cost']
+        total_logistics_cost = shipping_cost + buy_cost + rent_cost
+        
+        # 2. Inventory By Zone (Projected for FN1 or something?)
+        # Let's use the 'Initial_Inv' + applied shipments for FN1?
+        # Or just 'Initial_Inv' as a proxy for current state?
+        # The schema likely wants the 'Closing Inventory' of the period.
+        # Let's grab FN1 projection from 'calculate_inventory_projections'
+        proj_df = calculate_inventory_projections() # returns columns Zone, Capacity, FN1..FN8
+        inventory_by_zone = dict(zip(proj_df['Zone'], proj_df['FN1']))
+        
+        # 3. Shipping Schedule
+        # Shipments list?
+        # Let's export list of shipments id/origin/dest/qty
+        # Format might be flexible unless specific consumer expects something.
+        # CFO just imports 'logistics_costs' mainly.
+        # CLO -> CFO: logistics_costs
+        
+        outputs = {
+            'shipping_schedule': st.session_state.logistics_shipments.to_dict('records'),
+            'logistics_costs': total_logistics_cost,
+            'inventory_by_zone': inventory_by_zone
+        }
+        
+        export_dashboard_data('CLO', outputs)
+        
+    except Exception as e:
+        print(f"Shared Output Export Error: {e}")
+

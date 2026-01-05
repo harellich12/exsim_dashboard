@@ -835,3 +835,40 @@ def render_cmo_tab():
         
     with subtabs[5]:
         render_cross_reference()
+    
+    # ---------------------------------------------------------
+    # EXSIM SHARED OUTPUTS - EXPORT
+    # ---------------------------------------------------------
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate final outputs for export
+        economics = get_economics()
+        strategy_df = get_state('cmo_strategy_inputs')
+        if strategy_df is None:
+            init_cmo_state()
+            strategy_df = get_state('cmo_strategy_inputs')
+            
+        tv_spots = st.session_state.get('cmo_tv_spots', 10)
+        
+        innovation_cost = sum(
+            data['upfront_cost'] * data['decision']
+            for data in get_state('cmo_innovation_decisions').values()
+        )
+        
+        output_df = calculate_marketing_outputs(strategy_df, tv_spots, economics, innovation_cost)
+        
+        # Prepare Export Data
+        outputs = {
+            'demand_forecast': dict(zip(strategy_df['Zone'], strategy_df['Target_Demand'])),
+            'marketing_spend': output_df['Mkt_Cost'].sum(),
+            'pricing': dict(zip(strategy_df['Zone'], strategy_df['Price'])),
+            'innovation_costs': innovation_cost
+        }
+        
+        export_dashboard_data('CMO', outputs)
+        # st.toast("✅ CMO Data Exported to Shared Outputs")
+        
+    except Exception as e:
+        print(f"Shared Output Export Error: {e}")
+
