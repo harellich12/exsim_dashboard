@@ -347,24 +347,64 @@ def load_esg_report(file) -> Dict[str, Any]:
 
 
 def load_production_data(file) -> Dict[str, Any]:
-    """Load production.xlsx - Production input."""
+    """
+    Load production.xlsx - Production input.
+    Robust parser that greedily looks for:
+    - Machine counts ("Machines", "Machine Capacity")
+    - Module counts ("Modules", "Slots")
+    - Historic Production ("Production", "Output")
+    """
     try:
         df = pd.read_excel(file, header=None)
-        data = {'zones': {}, 'machine_capacity': 0, 'raw_df': df}
         
+        # Initialize structure
         zones = ['Center', 'West', 'North', 'East', 'South']
+        data = {
+            'zones': {z: {'machines': 0, 'modules': 0, 'capacity': 0, 'production': 0} for z in zones},
+            'machine_capacity': 0,
+            'raw_df': df
+        }
+        
         for idx, row in df.iterrows():
             first_val = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ''
             
-            if 'machine' in first_val and 'capacity' in first_val:
-                data['machine_capacity'] = parse_numeric(row.iloc[1]) if len(row) > 1 else 0
-            
-            if 'production' in first_val or 'output' in first_val:
+            # Helper to extract zone values from a row
+            def extract_zone_values(row_data, key):
+                found = False
                 for z_idx, zone in enumerate(zones):
-                    if z_idx + 1 < len(row):
-                        if zone not in data['zones']:
-                            data['zones'][zone] = {}
-                        data['zones'][zone]['production'] = parse_numeric(row.iloc[z_idx + 1])
+                    # Data usually starts at column 1 (index 1) or 2 depending on format
+                    # matches legacy format: Label | Center | West ...
+                    # or: Label | ... | Center ...
+                    
+                    # Try simple offset first
+                    if z_idx + 1 < len(row_data):
+                        val = parse_numeric(row_data.iloc[z_idx + 1])
+                        if val > 0:
+                            data['zones'][zone][key] = val
+                            found = True
+                return found
+
+            # 1. Machines Count
+            if 'machines' in first_val and 'capacity' not in first_val:
+                extract_zone_values(row, 'machines')
+
+            # 2. Modules / Slots
+            elif 'module' in first_val or 'slot' in first_val or 'space' in first_val:
+                extract_zone_values(row, 'modules')
+
+            # 3. Machine Capacity (Units)
+            elif 'machine' in first_val and 'capacity' in first_val:
+                extract_zone_values(row, 'capacity')
+
+            # 4. Historic Production
+            elif 'production' in first_val or 'output' in first_val:
+                extract_zone_values(row, 'production')
+
+        # Backfill: If we hav Capacity but no Machines, derive Machines (Capacity / 100)
+        for zone in zones:
+            z_data = data['zones'][zone]
+            if z_data['machines'] == 0 and z_data['capacity'] > 0:
+                z_data['machines'] = int(z_data['capacity'] / 100)
         
         return data
     except Exception as e:

@@ -51,24 +51,41 @@ def init_production_state():
         
         prod_data = get_state('production_data')
         workers_data = get_state('workers_data')
+        materials_data = get_state('materials_data')
         
+        # Calculate available materials (Sum of all stock)
+        total_materials = 0
+        if materials_data and 'parts' in materials_data:
+            total_materials = sum(p.get('stock', 0) for p in materials_data['parts'].values())
+        if total_materials == 0:
+            total_materials = 1000 # Default if no data
+            
         # Zone calculators - production by zone by fortnight
         zone_data = []
         for zone in ZONES:
-            workers = workers_data.get('zones', {}).get(zone, {}).get('workers', 50) if workers_data else 50
-            machines = prod_data.get('zones', {}).get(zone, {}).get('machines', 10) if prod_data else (57 if zone == 'Center' else 0)
-            modules = prod_data.get('zones', {}).get(zone, {}).get('modules', 5) if prod_data else (72 if zone == 'Center' else 0)
-            materials = prod_data.get('zones', {}).get(zone, {}).get('materials', 1000) if prod_data else (1000 if zone == 'Center' else 0)
+            # Data from robust loader
+            z_prod = prod_data.get('zones', {}).get(zone, {}) if prod_data else {}
+            z_workers = workers_data.get('zones', {}).get(zone, {}) if workers_data else {}
+            
+            machines = z_prod.get('machines', (57 if zone == 'Center' else 0))
+            modules = z_prod.get('modules', (72 if zone == 'Center' else 0))
+            historic_production = z_prod.get('production', 0)
+            
+            workers = z_workers.get('workers', 50)
+            
+            # Smart Default: If historic production exists, use it as target. Else 0.
+            default_target = historic_production if historic_production > 0 else 0
             
             zone_data.append({
                 'Zone': zone,
-                'Current_Machines': machines,
-                'Current_Workers': workers,
-                'Module_Slots': modules,
-                'Local_Materials': materials,
+                'Machines': machines,
+                'Workers': workers,
+                'Modules': modules,
+                'Materials': total_materials, # Shared pool logic often used, or localized. Using localized same value for now.
+                'Historic_Production': historic_production,
                 'Machine_Cap': machines * PROD_CONFIG['units_per_machine'],
                 'Labor_Cap': workers * PROD_CONFIG['units_per_worker'],
-                **{f'Target_FN{fn}': 0 for fn in FORTNIGHTS},
+                **{f'Target_FN{fn}': default_target for fn in FORTNIGHTS},
                 **{f'Overtime_FN{fn}': False for fn in FORTNIGHTS}
             })
         st.session_state.production_zones = pd.DataFrame(zone_data)
@@ -80,8 +97,8 @@ def init_production_state():
                 'Zone': zone,
                 'Buy_Machines': 0,
                 'Buy_Modules': 0,
-                'Transfer_Machines_In': 0,
-                'Transfer_Machines_Out': 0
+                'Transfer_In': 0,
+                'Transfer_Out': 0
             })
         st.session_state.production_expansion = pd.DataFrame(expansion_data)
 
@@ -90,21 +107,36 @@ def sync_from_uploads():
     """Sync Production data from uploaded files."""
     prod_data = get_state('production_data')
     workers_data = get_state('workers_data')
+    materials_data = get_state('materials_data')
     
+    # Sync Materials
+    if materials_data and 'parts' in materials_data:
+        total_materials = sum(p.get('stock', 0) for p in materials_data['parts'].values())
+        if total_materials > 0:
+            st.session_state.production_zones['Materials'] = total_materials
+            
+    # Sync Machines & Modules
     if prod_data and 'zones' in prod_data:
         for idx, row in st.session_state.production_zones.iterrows():
             zone = row['Zone']
             if zone in prod_data['zones']:
-                machines = prod_data['zones'][zone].get('machines', row['Current_Machines'])
-                st.session_state.production_zones.at[idx, 'Current_Machines'] = machines
-                st.session_state.production_zones.at[idx, 'Machine_Cap'] = machines * PROD_CONFIG['units_per_machine']
+                z_data = prod_data['zones'][zone]
+                if 'machines' in z_data:
+                    machines = z_data['machines']
+                    st.session_state.production_zones.at[idx, 'Machines'] = machines
+                    st.session_state.production_zones.at[idx, 'Machine_Cap'] = machines * PROD_CONFIG['units_per_machine']
+                if 'modules' in z_data:
+                    st.session_state.production_zones.at[idx, 'Modules'] = z_data['modules']
+                if 'production' in z_data:
+                     st.session_state.production_zones.at[idx, 'Historic_Production'] = z_data['production']
     
+    # Sync Workers
     if workers_data and 'zones' in workers_data:
         for idx, row in st.session_state.production_zones.iterrows():
             zone = row['Zone']
             if zone in workers_data['zones']:
-                workers = workers_data['zones'][zone].get('workers', row['Current_Workers'])
-                st.session_state.production_zones.at[idx, 'Current_Workers'] = workers
+                workers = workers_data['zones'][zone].get('workers', row['Workers'])
+                st.session_state.production_zones.at[idx, 'Workers'] = workers
                 st.session_state.production_zones.at[idx, 'Labor_Cap'] = workers * PROD_CONFIG['units_per_worker']
 
 
@@ -119,10 +151,10 @@ def calculate_zone_production():
         exp_row = exp_df[exp_df['Zone'] == zone].iloc[0]
         
         # Effective capacity
-        machines = row['Current_Machines'] + exp_row['Buy_Machines'] + exp_row['Transfer_Machines_In'] - exp_row['Transfer_Machines_Out']
+        machines = row['Machines'] + exp_row['Buy_Machines'] + exp_row['Transfer_In'] - exp_row['Transfer_Out']
         machine_cap = machines * PROD_CONFIG['units_per_machine']
         labor_cap = row['Labor_Cap']
-        materials = row['Local_Materials']
+        materials = row['Materials']
         
         zone_results = {'Zone': zone}
         
@@ -173,16 +205,18 @@ def render_zone_calculators():
     zone_idx = zones_df[zones_df['Zone'] == selected_zone].index[0]
     zone_row = zones_df.loc[zone_idx]
     
-    # Zone status
-    col1, col2, col3, col4 = st.columns(4)
+    # Zone status metrics
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("Machines", zone_row['Current_Machines'])
+        st.metric("Machines", zone_row['Machines'])
     with col2:
-        st.metric("Workers", zone_row['Current_Workers'])
+        st.metric("Workers", zone_row['Workers'])
     with col3:
         st.metric("Machine Cap", f"{zone_row['Machine_Cap']:,}")
     with col4:
-        st.metric("Materials", f"{zone_row['Local_Materials']:,}")
+        st.metric("Materials Available", f"{zone_row['Materials']:,}")
+    with col5:
+        st.metric("Historic Output", f"{zone_row.get('Historic_Production', 0):,}")
     
     # Production schedule grid
     st.markdown("### 📅 Production Schedule")
@@ -195,7 +229,7 @@ def render_zone_calculators():
     combined_data = []
     machine_cap = zone_row['Machine_Cap']
     labor_cap = zone_row['Labor_Cap']
-    materials = zone_row['Local_Materials']
+    materials = zone_row['Materials']
     
     # Calculate initial python values for first render
     results = calculate_zone_production()
@@ -314,10 +348,14 @@ def render_resource_mgr():
     # Section A: Current Resources
     st.markdown("### Section A: Current Resources by Zone")
     
-    zones_df = st.session_state.production_zones[['Zone', 'Current_Machines', 'Current_Workers', 
-                                                  'Module_Slots', 'Local_Materials', 'Machine_Cap', 'Labor_Cap']]
+    zones_df = st.session_state.production_zones[['Zone', 'Machines', 'Workers', 
+                                                  'Modules', 'Materials', 'Machine_Cap', 'Labor_Cap']]
     
-    st.dataframe(zones_df, width='stretch', hide_index=True)
+    # Rename columns for cleaner display
+    display_df = zones_df.copy()
+    display_df.columns = ['Zone', 'Machines', 'Workers', 'Modules', 'Available Materials', 'Machine Cap', 'Labor Cap']
+    
+    st.dataframe(display_df, width='stretch', hide_index=True)
     
     # Section B: Expansion by Zone
     st.markdown("### Section B: Expansion by Zone")
@@ -330,8 +368,8 @@ def render_resource_mgr():
     gb.configure_column('Zone', editable=False, width=80)
     gb.configure_column('Buy_Machines', headerName='Buy Machines', editable=True, width=120, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_column('Buy_Modules', headerName='Buy Modules', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Transfer_Machines_In', headerName='Transfer In', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Transfer_Machines_Out', headerName='Transfer Out', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Transfer_In', headerName='Transfer In', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Transfer_Out', headerName='Transfer Out', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -354,13 +392,13 @@ def render_resource_mgr():
         zone_row = st.session_state.production_zones[st.session_state.production_zones['Zone'] == zone].iloc[0]
         exp_row = st.session_state.production_expansion[st.session_state.production_expansion['Zone'] == zone].iloc[0]
         
-        modules = zone_row['Module_Slots']
-        machines = zone_row['Current_Machines'] + exp_row['Buy_Machines']
+        modules = zone_row['Modules']
+        machines = zone_row['Machines'] + exp_row['Buy_Machines']
         
         if modules == 0 and machines > 0:
             st.warning(f"⚠️ **{zone}**: Buy module first - zone has no slots!")
         elif machines > modules * PROD_CONFIG['module_capacity']:
-            st.error(f"🔴 **{zone}**: Too many machines for slots! Buy {((machines // PROD_CONFIG['module_capacity']) + 1 - modules)} more modules")
+            st.error(f"🔴 **{zone}**: Too many machines for slots! Buy {int((machines / PROD_CONFIG['module_capacity']) - modules + 0.99)} more modules")
     
     # Capacity visualization
     st.markdown("### 📊 Capacity Comparison")
