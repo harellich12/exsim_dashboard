@@ -46,7 +46,18 @@ PROD_CONFIG = {
 
 def init_production_state():
     """Initialize Production state with zone-specific data."""
-    if 'production_initialized' not in st.session_state:
+    
+    # Check if we need to re-init:
+    # 1. Not initialized yet
+    # 2. Schema update (Legacy 'Current_Workers' vs new 'Workers')
+    should_init = 'production_initialized' not in st.session_state
+    
+    if not should_init and 'production_zones' in st.session_state:
+        # Detect legacy schema
+        if 'Workers' not in st.session_state.production_zones.columns:
+            should_init = True
+    
+    if should_init:
         st.session_state.production_initialized = True
         
         prod_data = get_state('production_data')
