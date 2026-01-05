@@ -18,7 +18,7 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
     from case_parameters import FINANCIAL, COMMON
     from config import get_data_path, OUTPUT_DIR
@@ -91,7 +91,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 

@@ -395,8 +395,17 @@ def render_upload_ready_procurement():
     total_spend = get_state('PROCUREMENT_COST', 0)
     st.metric("Total Procurement", f"${total_spend:,.0f}")
     
-    if st.button("📋 Copy Procurement Decisions", type="primary", key='purchasing_copy'):
-        st.success("✅ Data copied! Paste into ExSim Procurement form.")
+    # CSV download button
+    orders_export = st.session_state.purchasing_orders.copy()
+    csv_data = orders_export.to_csv(index=False)
+    st.download_button(
+        label="📥 Download Decisions as CSV",
+        data=csv_data,
+        file_name="procurement_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        key='purchasing_csv_download'
+    )
 
 
 def render_cross_reference():

@@ -90,9 +90,9 @@ def load_market_report(file) -> Dict[str, Any]:
                 comp_cols = []
                 for col_idx in range(len(row)):
                     col_val = str(row.iloc[col_idx]).strip() if pd.notna(row.iloc[col_idx]) else ''
-                    if MY_COMPANY in col_val or 'Company 3' in col_val:
+                    if MY_COMPANY in col_val:
                         my_company_col = col_idx
-                    elif 'Company' in col_val and 'Company 3' not in col_val:
+                    elif 'Company' in col_val and MY_COMPANY not in col_val:
                         comp_cols.append(col_idx)
             
             # Parse zone data rows

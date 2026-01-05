@@ -210,6 +210,14 @@ def load_procurement_template(filepath):
 def create_purchasing_dashboard(materials_data, cost_data, template_data, output_buffer=None, decision_overrides=None):
     """Create the comprehensive Purchasing Dashboard."""
     
+    # Import shared outputs
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production')
+    except ImportError:
+        prod_data = None
+
+    
     wb = Workbook()
     
     # Styles
@@ -459,9 +467,27 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
         cell.alignment = Alignment(horizontal='center')
     
     # Target Production input row
-    ws3.cell(row=6, column=1, value="Target Production").border = thin_border
+    ws3.cell(row=6, column=1, value="Target Production (from Production Plan)").border = thin_border
+    
+    # Calculate global production target per fortnight
+    # Production Plan is {Zone: {Target: X}}
+    # We assume constant target per fortnight for now, or X/8 if X is total?
+    # Actually, in Production Dashboard, Target is PER FORTNIGHT (in loop).
+    # So the export {Zone: {Target: 1500}} means 1500 per fortnight.
+    global_target = 0
+    if prod_data and 'production_plan' in prod_data:
+        for z_data in prod_data['production_plan'].values():
+            global_target += z_data.get('Target', 0)
+    
     for fn in FORTNIGHTS:
-        cell = ws3.cell(row=6, column=1+fn, value=0)
+        # Link to shared data if available.
+        # But for Excel standalone, we might want to just put the value.
+        # To make it dynamic, we'd need a cell link, but that requires Cross Reference first.
+        # Let's just put the value for now, or link to Cross Reference if we put it there.
+        # Ideally, we put it in Cross Reference -> Row X, then link here.
+        
+        # Let's use the calculated value.
+        cell = ws3.cell(row=6, column=1+fn, value=global_target)
         cell.border = thin_border
         cell.fill = input_fill
     
@@ -831,6 +857,47 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     ws5.column_dimensions[get_column_letter(pieces_col_start+1)].width = 10
     ws5.column_dimensions[get_column_letter(pieces_col_start+2)].width = 10
     ws5.column_dimensions[get_column_letter(pieces_col_start+3)].width = 8
+
+    # =========================================================================
+    # TAB 6: CROSS_REFERENCE
+    # =========================================================================
+    ws6 = wb.create_sheet("CROSS REFERENCE")
+    
+    ws6['A1'] = "CROSS-REFERENCE SUMMARY"
+    ws6['A1'].font = title_font
+    ws6['A2'] = "Upstream data from Production Dashboard"
+    ws6['A2'].font = Font(italic=True, color="666666")
+    
+    row = 4
+    ws6.cell(row=row, column=1, value="PRODUCTION PLAN").font = section_font
+    row += 1
+    
+    ws6.cell(row=row, column=1, value="Zone").font = header_font
+    ws6.cell(row=row, column=1).fill = header_fill
+    ws6.cell(row=row, column=2, value="Target/FN").font = header_font
+    ws6.cell(row=row, column=2).fill = header_fill
+    row += 1
+    
+    total_prod = 0
+    if prod_data and 'production_plan' in prod_data:
+        for zone, data in prod_data['production_plan'].items():
+            ws6.cell(row=row, column=1, value=zone).border = thin_border
+            val = data.get('Target', 0)
+            ws6.cell(row=row, column=2, value=val).border = thin_border
+            total_prod += val
+            row += 1
+    
+    ws6.cell(row=row, column=1, value="TOTAL").font = Font(bold=True)
+    ws6.cell(row=row, column=2, value=total_prod).font = Font(bold=True)
+    
+    # Update MRP Engine to link to this total? 
+    # Yes, let's update MRP Engine cells to point here: =CROSS REFERENCE!B{row}
+    # We can't go back easily in openpyxl without keeping reference.
+    # But since we already wrote values in MRP Engine, we can leave it or rewrite target cells.
+    # Rewriting MRP Target cells to link to Cross Reference Total
+    ws3 = wb["MRP ENGINE"]
+    for fn in FORTNIGHTS:
+        ws3.cell(row=6, column=1+fn, value=f"='CROSS REFERENCE'!B{row}")
     
     # Save to buffer or file
     if output_buffer is not None:

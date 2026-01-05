@@ -193,45 +193,31 @@ def generate_finished_goods_data(rng):
 
 
 def generate_production_data(rng):
-    """Generate production_data structure for Production dashboard."""
-    production_data = {
-        'by_zone': {},
-        'costs': {},
-        'summary': {},
-    }
+    """Generate production_data structure for Production dashboard.
     
-    sections = ['Section 1', 'Section 2', 'Section 3', 'Section 4', 'Section 5']
+    Must match structure expected by tab_production.py:
+    - zones: dict with zone names
+    - Each zone has machines, modules, materials (inventory)
+    """
+    production_data = {
+        'zones': {},
+        'raw_df': None
+    }
     
     for zone in ZONES:
         is_active = zone in ZONES[:3]
-        zone_sections = {}
+        machines = rng.integers(5, 15) if is_active else 0
+        modules = machines + rng.integers(2, 5) if is_active else 0
+        materials = rng.integers(500, 2000) if is_active else 0
         
-        for section in sections:
-            zone_sections[section] = {
-                'produced': rng.integers(10000, 18000) if is_active else 0,
-                'direct_cost': rng.integers(20000, 60000) if is_active else 0,
-                'indirect_cost': rng.integers(5000, 15000) if is_active else 0,
-                'holding_cost': rng.integers(10000, 25000) if is_active else 0,
-            }
-            zone_sections[section]['total_cost'] = (
-                zone_sections[section]['direct_cost'] +
-                zone_sections[section]['indirect_cost'] +
-                zone_sections[section]['holding_cost']
-            )
-        
-        production_data['by_zone'][zone] = zone_sections
-    
-    production_data['summary'] = {
-        'total_production': sum(
-            sum(s['produced'] for s in zdata.values())
-            for zdata in production_data['by_zone'].values()
-        ),
-        'total_cost': sum(
-            sum(s['total_cost'] for s in zdata.values())
-            for zdata in production_data['by_zone'].values()
-        ),
-    }
-    
+        production_data['zones'][zone] = {
+            'machines': machines,
+            'modules': modules,
+            'materials': materials,
+            # Also include production output (checked by loader)
+            'production': rng.integers(500, 1500) if is_active else 0
+        }
+            
     return production_data
 
 
@@ -318,6 +304,30 @@ def generate_balance_data(rng):
         'gross_margin': gross_profit / max(1, revenue),
         'net_margin': net_income / max(1, revenue),
         'roa': net_income / max(1, assets['total_assets']),
+    }
+
+    # Flatten structure for CFO dashboard (tab_cfo.py expectations)
+    balance_data = {
+        'net_sales': revenue,
+        'cogs': cogs,
+        'gross_income': gross_profit,  # tab_cfo uses 'gross_income' or 'gross_margin'
+        'gross_margin': gross_profit,
+        'operating_expenses': opex,
+        'net_profit': net_income,
+        
+        'total_assets': assets['total_assets'],
+        'total_liabilities': liabilities['total_liabilities'],
+        'retained_earnings': equity['retained_earnings'],
+        
+        'gross_margin_pct': balance_data['ratios']['gross_margin'],
+        'net_margin_pct': balance_data['ratios']['net_margin'],
+        
+        # Keep detailed structures if needed for other parts
+        'details': {
+            'income_statement': balance_data['income_statement'],
+            'balance_sheet': balance_data['balance_sheet']
+        },
+        'raw_df': None
     }
     
     return balance_data
@@ -481,6 +491,21 @@ def generate_logistics_data(rng):
         'total_shipping': sum(z['total_cost'] for z in logistics_data['shipping'].values()),
         'total_warehouse': sum(z['monthly_cost'] for z in logistics_data['warehouses'].values()),
     }
+    
+    # Add benchmarks and penalties (Expected by tab_logistics.py)
+    logistics_data['benchmarks'] = {}
+    for origin in ZONES:
+        for dest in ZONES:
+            if origin != dest:
+                # Generate realistic route costs
+                logistics_data['benchmarks'][f"Train {origin}-{dest}"] = rng.uniform(3, 8)
+                logistics_data['benchmarks'][f"Truck {origin}-{dest}"] = rng.uniform(8, 15)
+                logistics_data['benchmarks'][f"Plane {origin}-{dest}"] = rng.uniform(20, 35)
+                
+    logistics_data['penalties'] = {}
+    for zone in ZONES:
+        if rng.random() < 0.3:  # 30% chance of penalty
+             logistics_data['penalties'][zone] = rng.integers(5000, 25000)
     
     return logistics_data
 

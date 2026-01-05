@@ -398,8 +398,20 @@ def render_upload_ready_production():
     with col3:
         st.metric("Modules to Buy", total_modules)
     
-    if st.button("📋 Copy Production Decisions", type="primary", key='prod_copy'):
-        st.success("✅ Data copied! Paste into ExSim Production form.")
+    # CSV download button
+    zones_df = st.session_state.production_zones
+    target_cols = ['Zone'] + [f'Target_FN{fn}' for fn in FORTNIGHTS]
+    export_df = zones_df[target_cols].copy()
+    csv_data = export_df.to_csv(index=False)
+    
+    st.download_button(
+        label="📥 Download Decisions as CSV",
+        data=csv_data,
+        file_name="production_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        key='prod_csv_download'
+    )
 
 
 def render_production_tab():

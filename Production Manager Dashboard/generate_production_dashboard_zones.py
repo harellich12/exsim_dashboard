@@ -18,7 +18,7 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
     from case_parameters import PRODUCTION, COMMON
     from config import get_data_path, OUTPUT_DIR
@@ -95,7 +95,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 
@@ -214,43 +214,52 @@ def load_machines_by_zone(filepath):
     """Load machine counts and modules grouped by zone."""
     df = load_excel_file(filepath)
 
-    # Default: All machines in Center
+    # Initialize data structure
     data = {zone: {'machines': 0, 'modules': 0, 'modules_used': 0} for zone in ZONES}
 
     if df is None:
         data['Center'] = {'machines': 57, 'modules': 72, 'modules_used': 69}
         return data
 
-    # For now, assume all machines are in Center (most common scenario)
-    total_machines = 0
     modules_available = 72
     modules_occupied = 0
+
+    # Zone column mapping (based on standard report format)
+    # Usually: Label, Center, West, North, East, South, Total...
+    zone_cols = {
+        'Center': 1,
+        'West': 2,
+        'North': 3,
+        'East': 4,
+        'South': 5
+    }
 
     for idx, row in df.iterrows():
         first_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
 
-        # Get machine counts
+        # Get machine counts per zone
         for mt in MACHINE_TYPES:
             if first_val == mt:
-                for col_idx in reversed(range(1, min(11, len(row)))):
-                    val = parse_numeric(row.iloc[col_idx])
-                    if val > 0:
-                        total_machines += int(val)
-                        break
+                for zone, col_idx in zone_cols.items():
+                    if col_idx < len(row):
+                         val = parse_numeric(row.iloc[col_idx])
+                         if val > 0:
+                             data[zone]['machines'] += int(val)
                 break
 
+        # Module info is usually global or per zone? 
+        # For simplicity/safety, if we can't parse per zone easily, we might default these to Center 
+        # or try to find zone-specific lines. 
+        # Existing logic was crude. Let's keep modules global -> Center fallback if not specific, 
+        # BUT machines MUST be distributed.
         if 'available' in first_val.lower():
             modules_available = parse_numeric(row.iloc[1]) if len(row) > 1 else 72
+            # Assign remaining modules to Center for now as default bucket
+            data['Center']['modules'] = int(modules_available)
 
         if 'occupied' in first_val.lower():
             modules_occupied = parse_numeric(row.iloc[1]) if len(row) > 1 else 0
-
-    # Assign all to Center (default scenario)
-    data['Center'] = {
-        'machines': total_machines,
-        'modules': int(modules_available),
-        'modules_used': int(modules_occupied)
-    }
+            data['Center']['modules_used'] = int(modules_occupied)
 
     return data
 
@@ -1011,11 +1020,32 @@ def main():
     print("  * UPLOAD_READY_PRODUCTION (ExSim Format)")
     
     # Export key metrics for downstream dashboards
+    # Export key metrics for downstream dashboards
     if export_dashboard_data:
-        total_production = sum(machines_data.get(z, {}).get('machines', 0) * 200 for z in ZONES)
-        total_workers = sum(workers_data.get(z, {}).get('workers', 0) for z in ZONES)
+        # Determine targets: Use template data if available, else default to capacity
+        # Note: 'template_data' in main() is loaded from 'Production Decisions.xlsx'
+        targets = {}
+        for zone in ZONES:
+            # Default to full capacity if no decision
+            cap = machines_data.get(zone, {}).get('machines', 0) * 200
+            
+            # Try to find in template dataframe
+            # Template structure: Zone | Product | Target | Overtime
+            t_val = cap
+            if template_data['exists'] and template_data['df'] is not None:
+                df = template_data['df']
+                # Scan for zone rows
+                for idx, row in df.iterrows():
+                    z_cell = str(row.iloc[0]).strip()
+                    if z_cell.lower() == zone.lower() and len(row) > 2:
+                        try:
+                            t_val = float(row.iloc[2]) # Target column
+                        except:
+                            pass
+            targets[zone] = t_val
+
         export_dashboard_data('Production', {
-            'production_plan': {zone: {'Target': machines_data.get(zone, {}).get('machines', 0) * 200} for zone in ZONES},
+            'production_plan': {zone: {'Target': targets[zone]} for zone in ZONES},
             'capacity_utilization': {'mean': 0.85},  # Placeholder - would be calculated from actuals
             'overtime_hours': 0,  # Calculated from dashboard inputs
             'unit_costs': {zone: 40 for zone in ZONES}  # Base unit cost

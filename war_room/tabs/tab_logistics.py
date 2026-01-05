@@ -585,8 +585,23 @@ def render_upload_ready_logistics():
     total = buy_cost + rent_cost + ship_cost
     st.metric("**TOTAL LOGISTICS COST**", f"${total:,.0f}")
     
-    if st.button("📋 Copy Logistics Decisions", type="primary", key='logistics_copy'):
-        st.success("✅ Data copied! Paste into ExSim Logistics form.")
+    # CSV download button
+    import io
+    output = io.StringIO()
+    output.write("=== WAREHOUSE MODULES ===\n")
+    wh_df.to_csv(output, index=False)
+    output.write("\n=== SHIPMENTS ===\n")
+    ship_df[['Order_FN', 'Origin', 'Destination', 'Mode', 'Quantity', 'Arrival_FN']].to_csv(output, index=False)
+    csv_data = output.getvalue()
+    
+    st.download_button(
+        label="📥 Download Decisions as CSV",
+        data=csv_data,
+        file_name="logistics_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        key='logistics_csv_download'
+    )
 
 
 def render_cross_reference():

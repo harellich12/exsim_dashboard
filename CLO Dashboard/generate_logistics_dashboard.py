@@ -19,7 +19,7 @@ import sys
 
 # Add parent directory to path to import case_parameters
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
     from case_parameters import LOGISTICS, COMMON
     from config import get_data_path, OUTPUT_DIR
@@ -99,7 +99,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 
@@ -275,6 +275,16 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # Handle missing intelligence data
     if intelligence_data is None:
         intelligence_data = {'benchmarks': {}, 'penalties': {}}
+    
+    # Import shared outputs
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production')
+        cmo_data = import_dashboard_data('CMO')
+    except ImportError:
+        prod_data = None
+        cmo_data = None
+
     
     wb = Workbook()
     
@@ -612,12 +622,17 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
             ws2.cell(row=row, column=1, value=f"FN{fn}").border = thin_border
             
             # Production (input from Production Dashboard)
-            cell = ws2.cell(row=row, column=2, value=0)
+            # Link to CROSS REFERENCE
+            # XRef Layout: Row 6=Center, 7=West, etc.
+            # Production is Col 2 in XRef
+            xref_row = 6 + ZONES.index(zone)
+            cell = ws2.cell(row=row, column=2, value=f"='CROSS REFERENCE'!B{xref_row}")
             cell.border = thin_border
             cell.fill = input_fill
             
             # Sales Forecast (input from Marketing Dashboard)
-            cell = ws2.cell(row=row, column=3, value=0)
+            # Sales is Col 3 in XRef
+            cell = ws2.cell(row=row, column=3, value=f"='CROSS REFERENCE'!C{xref_row}")
             cell.border = thin_border
             cell.fill = input_fill
             
@@ -901,7 +916,41 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
         ws3.cell(row=27, column=1, value=f"⚠️ Red cells = Cost >20% above avg benchmark (${avg_benchmark:.2f} avg)").font = Font(italic=True, color="9C0006")
     
     # =========================================================================
-    # TAB 4: UPLOAD_READY_LOGISTICS
+    # TAB 4: CROSS_REFERENCE
+    # =========================================================================
+    ws_xref = wb.create_sheet("CROSS REFERENCE")
+    ws_xref['A1'] = "CROSS-REFERENCE SUMMARY"
+    ws_xref['A1'].font = title_font
+    
+    row = 4
+    ws_xref.cell(row=row, column=1, value="Zone").font = header_font
+    ws_xref.cell(row=row, column=1).fill = header_fill
+    ws_xref.cell(row=row, column=2, value="Production Plan").font = header_font
+    ws_xref.cell(row=row, column=2).fill = header_fill
+    ws_xref.cell(row=row, column=3, value="Sales Forecast").font = header_font
+    ws_xref.cell(row=row, column=3).fill = header_fill
+    row += 2
+    
+    # Fill Data for Zones (Rows 6-10)
+    for zone in ZONES:
+        ws_xref.cell(row=row, column=1, value=zone).border = thin_border
+        
+        # Production
+        p_val = 0
+        if prod_data and 'production_plan' in prod_data:
+            p_val = prod_data['production_plan'].get(zone, {}).get('Target', 0)
+        ws_xref.cell(row=row, column=2, value=p_val).border = thin_border
+        
+        # Sales (CMO Demand)
+        s_val = 0
+        if cmo_data and 'demand_forecast' in cmo_data:
+            s_val = cmo_data['demand_forecast'].get(zone, 0)
+        ws_xref.cell(row=row, column=3, value=s_val).border = thin_border
+        
+        row += 1
+
+    # =========================================================================
+    # TAB 5: UPLOAD_READY_LOGISTICS
     # =========================================================================
     ws4 = wb.create_sheet("UPLOAD READY LOGISTICS")
     

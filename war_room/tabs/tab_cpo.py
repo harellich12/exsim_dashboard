@@ -447,8 +447,27 @@ def render_upload_ready_people():
     
     st.metric("**TOTAL LABOR EXPENSE**", f"${costs['total']:,.0f}")
     
-    if st.button("📋 Copy People Decisions", type="primary", key='cpo_copy'):
-        st.success("✅ Data copied! Paste into ExSim People form.")
+    # CSV download button - combine workforce and benefits
+    wf_export = st.session_state.cpo_workforce[['Zone', 'Hire', 'Fire', 'New_Salary']].copy()
+    benefits_export = st.session_state.cpo_benefits[st.session_state.cpo_benefits['Amount'] > 0].copy()
+    
+    # Create combined CSV
+    import io
+    output = io.StringIO()
+    output.write("=== WORKFORCE CHANGES ===\n")
+    wf_export.to_csv(output, index=False)
+    output.write("\n=== BENEFITS ===\n")
+    benefits_export.to_csv(output, index=False)
+    csv_data = output.getvalue()
+    
+    st.download_button(
+        label="📥 Download Decisions as CSV",
+        data=csv_data,
+        file_name="people_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        key='cpo_csv_download'
+    )
 
 
 def render_cross_reference():

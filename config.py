@@ -29,5 +29,5 @@ def get_data_path(filename: str) -> Path:
     if data_path.exists():
         return data_path
     
-    # If not found in either, return None to allow scripts to fallback to defaults
-    return None
+    # If not found in either, raise FileNotFoundError (as per docstring)
+    raise FileNotFoundError(f"Could not find {filename} in {REPORTS_DIR} or {DATA_DIR}")

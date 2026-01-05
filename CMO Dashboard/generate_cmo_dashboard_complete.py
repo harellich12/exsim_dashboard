@@ -22,7 +22,7 @@ import sys
 
 # Add parent directory to path to import case_parameters
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
     from case_parameters import MARKET, COMMON
     from config import get_data_path, OUTPUT_DIR
@@ -92,7 +92,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 
@@ -156,9 +156,9 @@ def load_market_report(filepath):
             for col_idx in range(len(row)):
                 col_val = str(row.iloc[col_idx]).strip() if pd.notna(row.iloc[col_idx]) else ''
                 # Find Company 3 column (matches "Company 3 A" or "Company 3")
-                if 'Company 3' in col_val or MY_COMPANY in col_val:
+                if MY_COMPANY in col_val:
                     my_company_col = col_idx
-                elif 'Company' in col_val and 'Company 3' not in col_val:
+                elif 'Company' in col_val and MY_COMPANY not in col_val:
                     comp_cols.append(col_idx)
         
         # Parse zone data rows
@@ -1400,17 +1400,24 @@ def main():
     print("  * UPLOAD_READY_INNOVATION (ExSim Format)")
     
     # Export key metrics for downstream dashboards
+    # Export key metrics for downstream dashboards
     if export_dashboard_data:
-        # Safely calculate innovation costs
-        try:
-            innov_costs = sum(f.get('cost', 0) for f in innovation_features if isinstance(f, dict) and f.get('selected', False))
-        except:
-            innov_costs = 0
+        # Safely calculate innovation costs (Default to 0 as we don't have decisions in main)
+        innov_costs = 0
+        
+        # Calculate marketing spend from historicals if available
+        # Note: This is just for initial population; real spend comes from user decisions in the dashboard
+        marketing_spend = sales_data.get('totals', {}).get('tv_spend', 0) + \
+                          sales_data.get('totals', {}).get('radio_spend', 0)
         
         export_dashboard_data('CMO', {
-            'demand_forecast': {zone: market_data.get('zones', {}).get(zone, {}).get('demand', 0) for zone in ZONES},
-            'marketing_spend': sum(sales_data.get(fn, {}).get('advertising', 0) for fn in range(1, 9)),
-            'pricing': {zone: market_data.get('zones', {}).get(zone, {}).get('my_price', 0) for zone in ZONES},
+            # Use demand from marketing template (target demand)
+            'demand_forecast': marketing_template.get('demand', {z: 0 for z in ZONES}),
+            'marketing_spend': marketing_spend,
+            # Use price from marketing template or market data
+            'pricing': {zone: marketing_template.get('prices', {}).get(zone, 0) or 
+                              market_data.get('zones', {}).get(zone, {}).get('my_price', 0) 
+                        for zone in ZONES},
             'innovation_costs': innov_costs
         })
 

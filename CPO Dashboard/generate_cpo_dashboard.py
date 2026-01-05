@@ -17,10 +17,11 @@ from openpyxl.chart import PieChart, LineChart, Reference, Series
 from openpyxl.chart.label import DataLabelList
 import warnings
 import sys
+import re
 
 # Add parent directory to path to import case_parameters
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
     from case_parameters import WORKFORCE, COMMON
     from config import get_data_path, OUTPUT_DIR
@@ -59,11 +60,10 @@ ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
 # Default parameters
 # Default parameters from Case if available
 PROD_WORKERS = WORKFORCE.get('PRODUCTION_WORKERS', {})
-DEFAULT_HIRING_FEE = PROD_WORKERS.get('HIRING_COST', 1250) + PROD_WORKERS.get('TRAINING_COST', 350) # Total cost to bring on
+DEFAULT_HIRING_FEE = PROD_WORKERS.get('HIRING_COST', 1250)
 DEFAULT_SEVERANCE = PROD_WORKERS.get('FIRING_COST', 2000) # Estimate
 DEFAULT_BASE_SALARY = PROD_WORKERS.get('BASE_SALARY', 650)
-DEFAULT_INFLATION_RATE = 0  # Was 0.03
-DEFAULT_INFLATION_RATE = 0  # Was 0.03
+DEFAULT_INFLATION_RATE = 0.03  # Restored to 3% for Strike Risk Calc
 
 # Default benefits structure
 DEFAULT_BENEFITS = [
@@ -101,7 +101,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 
@@ -186,24 +186,33 @@ def load_sales_admin(filepath):
             
             # 1. Salespeople Salaries row
             if 'salespeople salaries' in first_val:
-                # Extract Amount (Col C usually)
-                sales_salaries_amount = parse_numeric(row.iloc[2]) if len(row) > 2 else 0
-                
-                # Extract Count from label (e.g. "Salespeople Salaries (44 people)")
-                import re
-                details = str(row.iloc[1]) if pd.notna(row.iloc[1]) else ''
-                match = re.search(r'(\d+)\s*people', details, re.IGNORECASE)
-                if match:
-                    headcount = int(match.group(1))
-            
+                # Iterate row to find amount (large number) and details (string with 'people')
+                for col in range(1, len(row)):
+                    val = row.iloc[col]
+                    val_str = str(val).lower()
+                    
+                    if isinstance(val, (int, float)) and val > 1000: # Assuming salary > 1000
+                        sales_salaries_amount = val
+                    
+                    # Search for headcount in any text cell
+                    if 'people' in val_str:
+                         match = re.search(r'(\d+)\s*people', val_str, re.IGNORECASE)
+                         if match:
+                             headcount = int(match.group(1))
+
             # 2. Hiring Expenses row
             if 'salespeople hiring' in first_val:
-                sales_hiring_amount = parse_numeric(row.iloc[2]) if len(row) > 2 else 0
-                
-                details = str(row.iloc[1]) if pd.notna(row.iloc[1]) else ''
-                match = re.search(r'(\d+)\s*hires', details, re.IGNORECASE)
-                if match:
-                    hires = int(match.group(1))
+                for col in range(1, len(row)):
+                    val = row.iloc[col]
+                    val_str = str(val).lower()
+                    
+                    if isinstance(val, (int, float)) and val > 0:
+                        sales_hiring_amount = val
+                        
+                    if 'hires' in val_str:
+                        match = re.search(r'(\d+)\s*hires', val_str, re.IGNORECASE)
+                        if match:
+                            hires = int(match.group(1))
 
         # Calculations
         data['headcount'] = headcount

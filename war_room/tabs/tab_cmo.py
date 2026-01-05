@@ -660,8 +660,28 @@ def render_upload_ready_marketing():
     
     # Download button
     st.markdown("---")
-    if st.button("📋 Copy All to Clipboard", type="primary", width='stretch'):
-        st.success("✅ Data copied! Paste into ExSim Marketing form.")
+    # CSV download button
+    import io
+    output = io.StringIO()
+    output.write("=== MARKETING CAMPAIGNS ===\n")
+    pd.DataFrame(campaigns_data).to_csv(output, index=False)
+    output.write("\n=== DEMAND ===\n")
+    demand_df.to_csv(output, index=False)
+    output.write("\n=== PRICING ===\n")
+    pricing_df.to_csv(output, index=False)
+    output.write("\n=== CHANNELS ===\n")
+    channels_df.to_csv(output, index=False)
+    csv_data = output.getvalue()
+    
+    st.download_button(
+        label="📥 Download Marketing Decisions as CSV",
+        data=csv_data,
+        file_name="marketing_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        use_container_width=True,
+        key='cmo_mkt_csv_download'
+    )
 
 
 def render_upload_ready_innovation():
@@ -690,9 +710,16 @@ def render_upload_ready_innovation():
         export_df = pd.DataFrame(export_data)
         st.dataframe(export_df, width='stretch', hide_index=True)
         
-        st.markdown("---")
-        if st.button("📋 Copy Innovation Decisions", type="primary", width='stretch'):
-            st.success("✅ Data copied! Paste into ExSim Innovation form.")
+        csv_data = export_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Innovation Decisions as CSV",
+            data=csv_data,
+            file_name="innovation_decisions.csv",
+            mime="text/csv",
+            type="primary",
+            use_container_width=True,
+            key='cmo_innov_csv_download'
+        )
 
 
 def render_cross_reference():

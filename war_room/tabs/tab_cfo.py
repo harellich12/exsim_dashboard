@@ -617,8 +617,28 @@ def render_upload_ready_finance():
     div_total = sum(st.session_state.cfo_financing.at[3, f'FN{fn}'] for fn in FORTNIGHTS)
     st.metric("Total Dividends", f"${div_total:,.0f}")
     
-    if st.button("📋 Copy Finance Decisions", type="primary", key="cfo_copy"):
-        st.success("✅ Data copied! Paste into ExSim Finance form.")
+    # CSV download button
+    import io
+    output = io.StringIO()
+    output.write("=== CREDIT LINES ===\n")
+    if credit_summary:
+        pd.DataFrame(credit_summary).to_csv(output, index=False)
+    output.write("\n=== INVESTMENTS ===\n")
+    if invest_summary:
+        pd.DataFrame(invest_summary).to_csv(output, index=False)
+    output.write("\n=== MORTGAGES ===\n")
+    mortgages.to_csv(output, index=False)
+    output.write(f"\n=== DIVIDENDS ===\nTotal,{div_total}\n")
+    csv_data = output.getvalue()
+    
+    st.download_button(
+        label="📥 Download Decisions as CSV",
+        data=csv_data,
+        file_name="finance_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        key='cfo_csv_download'
+    )
 
 
 def render_cross_reference():

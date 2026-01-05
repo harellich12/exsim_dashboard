@@ -335,8 +335,20 @@ def render_upload_ready_esg():
     
     st.metric("Projected Remaining Tax", f"${impact['tax_liability']:,.0f}")
     
-    if st.button("📋 Copy ESG Decisions", type="primary", key='esg_copy'):
-        st.success("✅ Data copied! Paste into ExSim ESG form.")
+    # CSV download button
+    if decisions:
+        export_df = pd.DataFrame(decisions)
+        csv_data = export_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Decisions as CSV",
+            data=csv_data,
+            file_name="esg_decisions.csv",
+            mime="text/csv",
+            type="primary",
+            key='esg_csv_download'
+        )
+    else:
+        st.caption("No decisions to download")
 
 
 def render_cross_reference():
