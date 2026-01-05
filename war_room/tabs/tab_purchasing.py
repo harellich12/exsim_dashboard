@@ -56,7 +56,20 @@ def init_purchasing_state():
         st.session_state.purchasing_suppliers = pd.DataFrame(supplier_data)
         
         # MRP Engine data
-        opening_inv = raw_data.get('opening_inventory', 1000) if raw_data else 1000
+        # INTEGRATION: Read from materials_data if available
+        opening_inv = 1000 # Default
+        if raw_data and 'parts' in raw_data:
+            # Sum stock of all parts? Or just one? Usually Part A and B.
+            # For simplicity in this aggregated view, let's sum them or pick one.
+            # Or better: Check if we have 'Part A' stock.
+            part_a = raw_data['parts'].get('Part A (Unit)', {}).get('stock', 0)
+            part_b = raw_data['parts'].get('Part B (Unit)', {}).get('stock', 0)
+            # Try looser match if exact key fails
+            if part_a == 0 and part_b == 0:
+                 total_stock = sum(p['stock'] for p in raw_data['parts'].values())
+                 opening_inv = total_stock if total_stock > 0 else 1000
+            else:
+                opening_inv = part_a + part_b
         
         mrp_data = {
             'Item': ['Target_Production', 'Opening_Inventory', 'Gross_Requirement', 
@@ -77,6 +90,42 @@ def init_purchasing_state():
         # Cost analysis
         st.session_state.purchasing_ordering_cost = 5000
         st.session_state.purchasing_holding_cost = 2000
+
+
+def sync_from_production():
+    """Sync 'Target_Production' from shared outputs."""
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production')
+        if prod_data and 'production_plan' in prod_data:
+            prod_plan = prod_data['production_plan']
+            # Sum target across all zones for each FN?
+            # Production Plan export format: {'Center': {'Target': 1000}}
+            # It seems we only have a single 'Target' value per zone (total?) or maybe per FN if we expanded it.
+            # If the export is just a total target, we might need to distribute it.
+            # But wait, looking at tab_production.py export:
+            # prod_plan[zone] = {'Target': total_target}
+            # total_target is sum of FN1..4. Use average or fill FN1?
+            
+            # Better approach: If we want per-FN granularity, we should have exported it.
+            # For now, let's take the total target sum and spread it or just put it in FN1/FN2?
+            # Or assume uniform distribution.
+            
+            total_target_all_zones = sum(z.get('Target', 0) for z in prod_plan.values())
+            
+            if total_target_all_zones > 0:
+                # Distribute uniformly?
+                mrp = st.session_state.purchasing_mrp
+                # Avoid overwriting if user manually edited? 
+                # Actually, MRP 'Target_Production' should be driven by Production Plan.
+                # Let's overwrite.
+                per_fn = total_target_all_zones / 4 # Assume 4 active FNs
+                for i in range(1, 5):
+                     mrp.at[0, f'FN{i}'] = per_fn
+                st.session_state.purchasing_mrp = mrp
+                
+    except ImportError:
+        pass
 
 
 def calculate_mrp():
@@ -466,6 +515,7 @@ def render_cross_reference():
 def render_purchasing_tab():
     """Render the Purchasing tab with 5 Excel-aligned subtabs."""
     init_purchasing_state()
+    sync_from_production() # AUTO-SYNC
     
     # Header with Download Button
     col_header, col_download = st.columns([4, 1])
@@ -512,3 +562,31 @@ def render_purchasing_tab():
         
     with subtabs[5]:
         render_cross_reference()
+    
+    # ---------------------------------------------------------
+    # EXSIM SHARED OUTPUTS - EXPORT
+    # ---------------------------------------------------------
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate final outputs for export
+        # 'supplier_spend', 'inventory_levels'
+        # Supplier Spend: Total procurement cost
+        total_spend = get_state('PROCUREMENT_COST', 0)
+        if total_spend == 0:
+            # Re-calc if not set (page refresh)
+            pass 
+        
+        # Inventory Levels: projected closing for FN1
+        mrp = st.session_state.purchasing_mrp
+        proj_inv = mrp.at[4, 'FN1']
+        
+        outputs = {
+            'supplier_spend': total_spend,
+            'inventory_levels': {'projected_closing': proj_inv}
+        }
+        
+        export_dashboard_data('Purchasing', outputs)
+        
+    except Exception as e:
+        print(f"Shared Output Export Error: {e}")
