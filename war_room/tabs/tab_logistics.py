@@ -51,6 +51,7 @@ def init_logistics_state():
         
         fg_data = get_state('finished_goods_data')
         log_data = get_state('logistics_data')
+        prod_zones = get_state('production_zones') # Get Production data
         
         # Load benchmarks and penalties
         st.session_state.logistics_benchmarks = log_data.get('benchmarks', {}) if log_data else {}
@@ -77,10 +78,20 @@ def init_logistics_state():
         inventory_data = []
         for zone in ZONES:
             initial_inv = fg_data.get('zones', {}).get(zone, {}).get('inventory', 500) if fg_data else 500
+            
+            # Sync Production Targets if available
+            prod_values = {}
+            if prod_zones is not None and not prod_zones.empty:
+                 # Find zone row
+                 z_row = prod_zones[prod_zones['Zone'] == zone]
+                 if not z_row.empty:
+                     for fn in FORTNIGHTS:
+                         prod_values[f'Prod_FN{fn}'] = z_row.iloc[0].get(f'Target_FN{fn}', 0)
+            
             inventory_data.append({
                 'Zone': zone,
                 'Initial_Inv': initial_inv,
-                **{f'Prod_FN{fn}': 0 for fn in FORTNIGHTS},
+                **{f'Prod_FN{fn}': prod_values.get(f'Prod_FN{fn}', 0) for fn in FORTNIGHTS},
                 **{f'Sales_FN{fn}': 0 for fn in FORTNIGHTS},
                 **{f'Out_FN{fn}': 0 for fn in FORTNIGHTS},
                 **{f'In_FN{fn}': 0 for fn in FORTNIGHTS}
@@ -105,15 +116,27 @@ def init_logistics_state():
 
 
 def sync_from_uploads():
-    """Sync CLO data from uploaded files."""
+    """Sync CLO data from uploaded files and upstream."""
     fg_data = get_state('finished_goods_data')
+    prod_zones = get_state('production_zones')
     
+    # Sync FG Capacity
     if fg_data and 'zones' in fg_data:
         for idx, row in st.session_state.logistics_warehouses.iterrows():
             zone = row['Zone']
             if zone in fg_data['zones']:
                 capacity = fg_data['zones'][zone].get('capacity', row['Current_Capacity'])
                 st.session_state.logistics_warehouses.at[idx, 'Current_Capacity'] = capacity
+
+    # Sync Production Targets (Always overwrite Prod_FN if Production Dashboard is active)
+    if prod_zones is not None and not prod_zones.empty:
+        for idx, row in st.session_state.logistics_inventory.iterrows():
+            zone = row['Zone']
+            z_row = prod_zones[prod_zones['Zone'] == zone]
+            if not z_row.empty:
+                for fn in FORTNIGHTS:
+                    target = z_row.iloc[0].get(f'Target_FN{fn}', 0)
+                    st.session_state.logistics_inventory.at[idx, f'Prod_FN{fn}'] = target
 
 
 def calculate_inventory_projections():
@@ -134,6 +157,12 @@ def calculate_inventory_projections():
             sales = row.get(f'Sales_FN{fn}', 0)
             out = row.get(f'Out_FN{fn}', 0)
             incoming = row.get(f'In_FN{fn}', 0)
+            
+            # Outgoing is usually negative in Tetris, but if user enters positive 'Out', subtract it.
+            # Logic: Inventory = Previous + Prod + In - Sales - Out
+            # We assume 'Out' column in Tetris is entered as positive magnitude by user or automation.
+            # But wait, original code said "Add NEGATIVE qty". Let's standardize on SUBTRACTING the value.
+            # So if automation puts positive 500 in Out column, we subtract it.
             
             running_inv = running_inv + prod + incoming - sales - abs(out)
             zone_results[f'FN{fn}'] = running_inv
@@ -159,9 +188,9 @@ def render_route_config():
     st.markdown("### 🚚 Transport Modes")
     
     transport_df = pd.DataFrame([
-        {'Mode': 'Train', 'Lead_Time': '2 FN', 'Cost_per_Unit': '$5', 'Best_For': 'Cheap bulk, plan ahead'},
-        {'Mode': 'Truck', 'Lead_Time': '1 FN', 'Cost_per_Unit': '$10', 'Best_For': 'Balanced option'},
-        {'Mode': 'Plane', 'Lead_Time': '0 FN', 'Cost_per_Unit': '$25', 'Best_For': 'Expensive, emergencies only'}
+        {'Mode': 'Train', 'Lead Time': '2 FN', 'Cost/Unit': '$5', 'Best For': 'Cheap bulk, plan ahead'},
+        {'Mode': 'Truck', 'Lead Time': '1 FN', 'Cost/Unit': '$10', 'Best For': 'Balanced option'},
+        {'Mode': 'Plane', 'Lead Time': '0 FN', 'Cost/Unit': '$25', 'Best For': 'Expensive, emergencies only'}
     ])
     
     st.dataframe(transport_df, width='stretch', hide_index=True)
@@ -335,7 +364,8 @@ def render_inventory_tetris():
     st.subheader("🧩 INVENTORY TETRIS - Balance Inventory by Zone")
     
     st.markdown("""
-    **Enter per zone:** Production (from CPO), Sales (from CMO), Outgoing (negative), Incoming (positive)
+    **Production** is auto-synced from Production tab. **Sales** is auto-synced from CMO.
+    **Outgoing/Incoming** are auto-filled by the Shipment Builder.
     """)
     
     # Simplified input - one zone at a time
@@ -363,7 +393,7 @@ def render_inventory_tetris():
     
     gb = GridOptionsBuilder.from_dataframe(zone_input_df)
     gb.configure_column('Fortnight', editable=False, width=90)
-    gb.configure_column('Production', editable=True, width=110, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Production', editable=False, width=110) # Made Read-Only
     gb.configure_column('Sales', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_column('Outgoing', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
     gb.configure_column('Incoming', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
@@ -384,7 +414,7 @@ def render_inventory_tetris():
         for fn in FORTNIGHTS:
             fn_row = updated[updated['Fortnight'] == f'FN{fn}']
             if not fn_row.empty:
-                inv_df.at[zone_idx, f'Prod_FN{fn}'] = fn_row['Production'].values[0]
+                # Production is read-only, dont update it back or we lose sync if user somehow edits it
                 inv_df.at[zone_idx, f'Sales_FN{fn}'] = fn_row['Sales'].values[0]
                 inv_df.at[zone_idx, f'Out_FN{fn}'] = fn_row['Outgoing'].values[0]
                 inv_df.at[zone_idx, f'In_FN{fn}'] = fn_row['Incoming'].values[0]
@@ -464,17 +494,50 @@ def render_shipment_builder():
     """Render SHIPMENT_BUILDER sub-tab - Plan inter-zone transfers."""
     st.subheader("📦 SHIPMENT BUILDER - Inter-Zone Transfers")
     
-    st.info("""
-    **After adding shipments:**
-    1. Add **NEGATIVE** qty to Origin zone's "Outgoing" in ORDER FN (in INVENTORY_TETRIS)
-    2. Add **POSITIVE** qty to Destination zone's "Incoming" in ARRIVAL FN
-    """)
-    
+    col_inst, col_btn = st.columns([3, 1])
+    with col_inst:
+        st.info("1. Define shipments below. \n2. Click the button to auto-update Inventory Tetris (Outgoing/Incoming).")
+    with col_btn:
+        if st.button("🚀 Apply Shipments", type="primary"):
+            # Apply Logic
+            inv_df = st.session_state.logistics_inventory
+            ship_df = st.session_state.logistics_shipments
+            
+            # Reset Out/In columns first to avoid double counting
+            for fn in FORTNIGHTS:
+                inv_df[f'Out_FN{fn}'] = 0
+                inv_df[f'In_FN{fn}'] = 0
+            
+            # Process each shipment
+            count = 0
+            for _, row in ship_df.iterrows():
+                qty = row['Quantity']
+                if qty > 0:
+                    origin = row['Origin']
+                    dest = row['Destination']
+                    order_fn = int(row['Order_FN'])
+                    arrival_fn = int(row['Arrival_FN'])
+                    
+                    # Add to Origin Outgoing (FN = order_fn)
+                    if order_fn <= 8:
+                        origin_idx = inv_df[inv_df['Zone'] == origin].index[0]
+                        inv_df.at[origin_idx, f'Out_FN{order_fn}'] += qty
+                    
+                    # Add to Destination Incoming (FN = arrival_fn)
+                    if arrival_fn <= 8:
+                        dest_idx = inv_df[inv_df['Zone'] == dest].index[0]
+                        inv_df.at[dest_idx, f'In_FN{arrival_fn}'] += qty
+                    
+                    count += 1
+            
+            st.session_state.logistics_inventory = inv_df
+            st.success(f"✅ Applied {count} shipments to Inventory Tetris!")
+            
     EDITABLE_STYLE = {'backgroundColor': '#E3F2FD', 'color': '#1565C0'}
     
     ship_df = st.session_state.logistics_shipments.copy()
     
-    # Update Lead Time and Arrival based on Mode
+    # Update Lead Time and Arrival based on Mode (Python backup)
     for idx in ship_df.index:
         mode = ship_df.at[idx, 'Mode']
         order_fn = ship_df.at[idx, 'Order_FN']
@@ -544,7 +607,7 @@ def render_shipment_builder():
     
     if grid_response.data is not None:
         updated = pd.DataFrame(grid_response.data)
-        # Recalculate lead times and arrivals
+        # Recalculate lead times and arrivals (Python side for state)
         for idx in updated.index:
             mode = updated.at[idx, 'Mode']
             order_fn = updated.at[idx, 'Order_FN']
