@@ -482,6 +482,35 @@ def render_shipment_builder():
         ship_df.at[idx, 'Lead_Time'] = lead_time
         ship_df.at[idx, 'Arrival_FN'] = min(order_fn + lead_time, 8)
     
+    # JS Logic for Lead Time
+    # TRANSPORT_CONFIG = {'Train': 2, 'Truck': 1, 'Plane': 0}
+    lead_getter = JsCode("""
+        function(params) {
+            const modes = {'Train': 2, 'Truck': 1, 'Plane': 0};
+            const mode = params.data.Mode;
+            if (mode && mode in modes) {
+                return modes[mode];
+            }
+            return 1; // Default
+        }
+    """)
+    
+    # JS Logic for Arrival FN
+    # Arrival = Order_FN + Lead_Time
+    arrival_getter = JsCode("""
+        function(params) {
+            const modes = {'Train': 2, 'Truck': 1, 'Plane': 0};
+            const mode = params.data.Mode;
+            let lead = 1;
+            if (mode && mode in modes) {
+                lead = modes[mode];
+            }
+            let order = Number(params.data.Order_FN) || 1;
+            let arrival = order + lead;
+            return (arrival > 8) ? 8 : arrival; // Cap at FN8
+        }
+    """)
+    
     gb = GridOptionsBuilder.from_dataframe(ship_df)
     gb.configure_column('ID', editable=False, width=50)
     gb.configure_column('Order_FN', headerName='Order FN', editable=True, width=90, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
@@ -493,8 +522,13 @@ def render_shipment_builder():
     gb.configure_column('Mode', editable=True, width=80,
                        cellEditor='agSelectCellEditor', cellEditorParams={'values': TRANSPORT_MODES}, cellStyle=EDITABLE_STYLE)
     gb.configure_column('Quantity', editable=True, width=90, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Lead_Time', headerName='Lead Time', editable=False, width=90)
-    gb.configure_column('Arrival_FN', headerName='Arrival FN', editable=False, width=90)
+    
+    # Use valueGetter for instant updates
+    gb.configure_column('Lead_Time', headerName='Lead Time', editable=False, width=90, 
+                       valueGetter=lead_getter)
+    gb.configure_column('Arrival_FN', headerName='Arrival FN', editable=False, width=90,
+                       valueGetter=arrival_getter)
+    
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
@@ -504,6 +538,7 @@ def render_shipment_builder():
         data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
         fit_columns_on_grid_load=True,
         height=250,
+        allow_unsafe_jscode=True,
         key='shipment_builder_grid'
     )
     

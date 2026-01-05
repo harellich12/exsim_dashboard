@@ -189,59 +189,73 @@ def render_zone_calculators():
     
     EDITABLE_STYLE = {'backgroundColor': '#E3F2FD', 'color': '#1565C0'}
     
-    # Build transposed DataFrame for editing
-    schedule_data = []
-    for fn in FORTNIGHTS:
-        schedule_data.append({
-            'Fortnight': f'FN{fn}',
-            'Target': zone_row.get(f'Target_FN{fn}', 0),
-            'Overtime': zone_row.get(f'Overtime_FN{fn}', False)
-        })
+    # Combined Grid for Inputs & Outputs with Client-Side Logic
     
-    schedule_df = pd.DataFrame(schedule_data)
+    # Prepare data with hidden constraints for JS
+    combined_data = []
+    machine_cap = zone_row['Machine_Cap']
+    labor_cap = zone_row['Labor_Cap']
+    materials = zone_row['Local_Materials']
     
-    gb = GridOptionsBuilder.from_dataframe(schedule_df)
-    gb.configure_column('Fortnight', editable=False, width=90)
-    gb.configure_column('Target', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Overtime', editable=True, width=90, cellEditor='agCheckboxCellEditor')
-    gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
-    
-    grid_response = AgGrid(
-        schedule_df,
-        gridOptions=gb.build(),
-        update_mode=GridUpdateMode.MODEL_CHANGED,
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        fit_columns_on_grid_load=True,
-        height=300,
-        key=f'zone_calc_grid_{selected_zone}'
-    )
-    
-    if grid_response.data is not None:
-        updated = pd.DataFrame(grid_response.data)
-        for fn in FORTNIGHTS:
-            fn_row = updated[updated['Fortnight'] == f'FN{fn}']
-            if not fn_row.empty:
-                zones_df.at[zone_idx, f'Target_FN{fn}'] = fn_row['Target'].values[0]
-                zones_df.at[zone_idx, f'Overtime_FN{fn}'] = fn_row['Overtime'].values[0]
-        st.session_state.production_zones = zones_df
-    
-    # Real Output and Alerts
+    # Calculate initial python values for first render
     results = calculate_zone_production()
     zone_results = results[results['Zone'] == selected_zone].iloc[0]
     
-    st.markdown("### 📊 Real Output & Alerts")
-    
-    output_data = []
     for fn in FORTNIGHTS:
-        output_data.append({
+        combined_data.append({
             'Fortnight': f'FN{fn}',
+            'Target': zone_row.get(f'Target_FN{fn}', 0),
+            'Overtime': zone_row.get(f'Overtime_FN{fn}', False),
+            'Machine_Cap': machine_cap,
+            'Labor_Cap': labor_cap,
+            'Materials': materials, 
             'Real_Output': zone_results.get(f'Real_FN{fn}', 0),
             'Alert': zone_results.get(f'Alert_FN{fn}', '✅ OK')
         })
     
-    output_df = pd.DataFrame(output_data)
+    combined_df = pd.DataFrame(combined_data)
     
-    alert_js = JsCode("""
+    # JS Logic for Real Output
+    # min(effective_cap, labor_cap, materials, target)
+    output_getter = JsCode("""
+        function(params) {
+            let target = Number(params.data.Target) || 0;
+            let overtime = params.data.Overtime;
+            let machine_cap = Number(params.data.Machine_Cap);
+            let labor_cap = Number(params.data.Labor_Cap);
+            let materials = Number(params.data.Materials);
+            
+            let effective_cap = machine_cap;
+            if (overtime) {
+                effective_cap = Math.floor(machine_cap * 1.25);
+            }
+            
+            return Math.min(target, effective_cap, labor_cap, materials);
+        }
+    """)
+    
+    # JS Logic for Alerts
+    alert_getter = JsCode("""
+        function(params) {
+            let target = Number(params.data.Target) || 0;
+            let overtime = params.data.Overtime;
+            let machine_cap = Number(params.data.Machine_Cap);
+            let labor_cap = Number(params.data.Labor_Cap);
+            let materials = Number(params.data.Materials);
+            
+            let effective_cap = machine_cap;
+            if (overtime) {
+                effective_cap = Math.floor(machine_cap * 1.25);
+            }
+            
+            if (target > materials) return '📦 SHIPMENT NEEDED';
+            if (target > effective_cap) return '⚙️ Machine Limit';
+            if (target > labor_cap) return '👷 Labor Limit';
+            return '✅ OK';
+        }
+    """)
+    
+    alert_style = JsCode("""
         function(params) {
             if (params.value && params.value.includes('SHIPMENT')) {
                 return {'backgroundColor': '#E1BEE7', 'color': '#6A1B9A', 'fontWeight': 'bold'};
@@ -254,19 +268,43 @@ def render_zone_calculators():
         }
     """)
     
-    gb = GridOptionsBuilder.from_dataframe(output_df)
+    gb = GridOptionsBuilder.from_dataframe(combined_df)
     gb.configure_column('Fortnight', editable=False, width=90)
-    gb.configure_column('Real_Output', headerName='Real Output', editable=False, width=110)
-    gb.configure_column('Alert', editable=False, width=160, cellStyle=alert_js)
+    gb.configure_column('Target', editable=True, width=100, type=['numericColumn'], cellStyle=EDITABLE_STYLE)
+    gb.configure_column('Overtime', editable=True, width=90, cellEditor='agCheckboxCellEditor')
     
-    AgGrid(
-        output_df,
+    # Calculated columns
+    gb.configure_column('Real_Output', headerName='Real Output', editable=False, width=110, 
+                       valueGetter=output_getter)
+    gb.configure_column('Alert', editable=False, width=160, 
+                       valueGetter=alert_getter, cellStyle=alert_style)
+    
+    # Hidden columns for calculation context
+    gb.configure_column('Machine_Cap', hide=True)
+    gb.configure_column('Labor_Cap', hide=True)
+    gb.configure_column('Materials', hide=True)
+    
+    gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
+    
+    grid_response = AgGrid(
+        combined_df,
         gridOptions=gb.build(),
+        update_mode=GridUpdateMode.MODEL_CHANGED,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
         fit_columns_on_grid_load=True,
-        height=300,
+        height=350,
         allow_unsafe_jscode=True,
-        key=f'zone_output_grid_{selected_zone}'
+        key=f'zone_calc_grid_{selected_zone}'
     )
+    
+    if grid_response.data is not None:
+        updated = pd.DataFrame(grid_response.data)
+        for fn in FORTNIGHTS:
+            fn_row = updated[updated['Fortnight'] == f'FN{fn}']
+            if not fn_row.empty:
+                zones_df.at[zone_idx, f'Target_FN{fn}'] = fn_row['Target'].values[0]
+                zones_df.at[zone_idx, f'Overtime_FN{fn}'] = fn_row['Overtime'].values[0]
+        st.session_state.production_zones = zones_df
 
 
 def render_resource_mgr():
