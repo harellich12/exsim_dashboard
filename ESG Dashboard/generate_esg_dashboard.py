@@ -29,7 +29,7 @@ except ImportError:
     COMMON = {}
     # Fallback for config
     OUTPUT_DIR = Path(__file__).parent
-    def get_data_path(f): return Path(f)
+    def get_data_path(f, **kwargs): return Path(f) if Path(f).exists() else None
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -288,7 +288,7 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     
     ws2['A7'] = "Current CO2 Tax Bill ($)"
     cell = ws2['B7']
-    cell.value = f'=B6*IMPACT_CONFIG!$B$4'
+    cell.value = f"=B6*'IMPACT CONFIG'!$B$4"
     cell.fill = calc_fill
     cell.border = thin_border
     cell.number_format = '$#,##0'
@@ -347,11 +347,11 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
         if name == "Green Electricity":
             # Cost = Energy * Qty% * Premium
             cell = ws2.cell(row=row, column=3, 
-                value=f'=$B$8*B{row}*IMPACT_CONFIG!B{init_config_row}')
+                value=f"=$B$8*B{row}*'IMPACT CONFIG'!B{init_config_row}")
         else:
             # Cost = Qty * Unit_Cost
             cell = ws2.cell(row=row, column=3, 
-                value=f'=B{row}*IMPACT_CONFIG!B{init_config_row}')
+                value=f"=B{row}*'IMPACT CONFIG'!B{init_config_row}")
         cell.fill = calc_fill
         cell.border = thin_border
         cell.number_format = '$#,##0'
@@ -360,18 +360,18 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
         if name == "Green Electricity":
             # Reduction = Energy * Qty% * Reduction_Rate
             cell = ws2.cell(row=row, column=4, 
-                value=f'=$B$8*B{row}*IMPACT_CONFIG!C{init_config_row}')
+                value=f"=$B$8*B{row}*'IMPACT CONFIG'!C{init_config_row}")
         else:
             # Reduction = Qty * Reduction_Per_Unit
             cell = ws2.cell(row=row, column=4, 
-                value=f'=B{row}*IMPACT_CONFIG!C{init_config_row}')
+                value=f"=B{row}*'IMPACT CONFIG'!C{init_config_row}")
         cell.fill = calc_fill
         cell.border = thin_border
         cell.number_format = '#,##0.0'
         
         # Tax Savings
         cell = ws2.cell(row=row, column=5, 
-            value=f'=D{row}*IMPACT_CONFIG!$B$4')
+            value=f"=D{row}*'IMPACT CONFIG'!$B$4")
         cell.fill = calc_fill
         cell.border = thin_border
         cell.number_format = '$#,##0'
@@ -430,7 +430,7 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
         cell.number_format = '$#,##0'
         
         # Hidden Helper Column for Chart Threshold (Tax Rate)
-        ws2.cell(row=row, column=9, value="=IMPACT_CONFIG!$B$4")
+        ws2.cell(row=row, column=9, value="='IMPACT CONFIG'!$B$4")
         
     
     sim_end_row = sim_start_row + len(initiatives) - 1
@@ -515,9 +515,9 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     
     ws2['A22'] = "New Tax Bill"
     cell = ws2['B22']
-    cell.value = f'=MAX(0,B7-B22*IMPACT_CONFIG!B4)' # Warning: Circular logic if B22 refs itself.
+    cell.value = f"=MAX(0,B7-B22*'IMPACT CONFIG'!B4)" # Warning: Circular logic if B22 refs itself.
     # Logic: New Tax = (Emissions - Reduced) * Rate
-    cell.value = f'=MAX(0,(B6-B20)*IMPACT_CONFIG!B4)'
+    cell.value = f"=MAX(0,(B6-B20)*'IMPACT CONFIG'!B4)"
     cell.fill = output_fill
     cell.border = thin_border
     cell.number_format = '$#,##0'
@@ -607,16 +607,16 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
         ws3.cell(row=row, column=1, value=name)
         
         # Quantity -> Link to Col B
-        ws3.cell(row=row, column=2, value=f"=STRATEGY_SELECTOR!B{source_row}")
+        ws3.cell(row=row, column=2, value=f"='STRATEGY SELECTOR'!B{source_row}")
         
         # Investment -> Link to Col C
-        ws3.cell(row=row, column=3, value=f"=STRATEGY_SELECTOR!C{source_row}")
+        ws3.cell(row=row, column=3, value=f"='STRATEGY SELECTOR'!C{source_row}")
         
         # CO2 Reduction -> Link to Col D
-        ws3.cell(row=row, column=4, value=f"=STRATEGY_SELECTOR!D{source_row}")
+        ws3.cell(row=row, column=4, value=f"='STRATEGY SELECTOR'!D{source_row}")
         
         # Tax Savings -> Link to Col E
-        ws3.cell(row=row, column=5, value=f"=STRATEGY_SELECTOR!E{source_row}")
+        ws3.cell(row=row, column=5, value=f"='STRATEGY SELECTOR'!E{source_row}")
 
     # Column widths
     ws3.column_dimensions['A'].width = 20
@@ -654,10 +654,42 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     ws5.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
     row += 1
     
-    prod_metrics = [
-        ("Total Production", f"{sum([d.get('Target',0) for d in prod_data.get('production_plan', {}).values()]) if prod_data and 'production_plan' in prod_data else 'N/A'}"),
-        ("Avg Utilization", f"{prod_data.get('capacity_utilization', {}).get('mean', 0)*100:.1f}%" if prod_data else "N/A"),
-    ]
+    prod_metrics = []
+    if prod_data:
+        # Total Production
+        plan = prod_data.get('production_plan', {})
+        total_prod = sum(d.get('Target', 0) for d in plan.values()) if plan else 0
+        prod_metrics.append(("Total Production", f"{total_prod:,.0f}"))
+        
+        # Avg Utilization
+        util_data = prod_data.get('capacity_utilization', {})
+        util_mean = util_data.get('mean', 0) if isinstance(util_data, dict) else 0
+        prod_metrics.append(("Avg Utilization", f"{float(util_mean) * 100:.1f}%"))
+        
+        # Overtime Hours
+        ot_hours = prod_data.get('overtime_hours', 0)
+        prod_metrics.append(("Overtime Hours", f"{float(ot_hours):,.0f}"))
+        
+        # Unit Cost Avg (safe division)
+        unit_costs = prod_data.get('unit_costs', {})
+        if unit_costs and len(unit_costs) > 0:
+            avg_cost = sum(unit_costs.values()) / len(unit_costs)
+        else:
+            avg_cost = 0
+        prod_metrics.append(("Unit Cost Avg", f"${float(avg_cost):.2f}"))
+        
+        # Total Sales Target
+        zones = ['Center', 'West', 'North', 'East', 'South']
+        total_target = sum(plan.get(z, {}).get('Target', 0) for z in zones)
+        prod_metrics.append(("Total Sales (Target)", f"{total_target:,.0f}"))
+    else:
+        prod_metrics = [
+            ("Total Production", "N/A"),
+            ("Avg Utilization", "N/A"),
+            ("Overtime Hours", "N/A"),
+            ("Unit Cost Avg", "N/A"),
+            ("Total Sales (Target)", "N/A"),
+        ]
     
     for label, value in prod_metrics:
         ws5.cell(row=row, column=1, value=label).border = thin_border
@@ -673,7 +705,7 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     row += 1
     
     clo_metrics = [
-        ("Logistics Costs", f"${clo_data.get('logistics_costs', 0):,.0f}" if clo_data else "N/A"),
+        ("Logistics Costs", f"${float(clo_data.get('logistics_costs', 0)):,.0f}" if clo_data else "N/A"),
         ("Shipping Volume", "See CLO Dashboard"),
     ]
     

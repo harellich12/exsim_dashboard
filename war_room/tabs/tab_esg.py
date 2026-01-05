@@ -388,7 +388,11 @@ def render_cross_reference():
         st.markdown("### 🚚 Logistics (Scope 3)")
         st.info("Shipping Volume drives Carbon Footprint.")
         
-        logistics_cost = clo_data.get('logistics_costs', 0)
+        raw_cost = clo_data.get('logistics_costs', 0)
+        try:
+            logistics_cost = float(raw_cost)
+        except (ValueError, TypeError):
+            logistics_cost = 0
         
         st.metric("Logistics Cost Proxy", f"${logistics_cost:,.0f}")
         

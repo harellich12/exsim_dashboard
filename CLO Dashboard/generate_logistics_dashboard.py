@@ -29,7 +29,7 @@ except ImportError:
     COMMON = {}
     # Fallback for config
     OUTPUT_DIR = Path(__file__).parent
-    def get_data_path(f): return Path(f)
+    def get_data_path(f, **kwargs): return Path(f) if Path(f).exists() else None
 
 # Import shared outputs for inter-dashboard communication
 try:

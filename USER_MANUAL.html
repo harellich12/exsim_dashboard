@@ -1,0 +1,116 @@
+
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; }
+            h2 { color: #34495e; margin-top: 30px; border-bottom: 1px solid #ddd; }
+            h3 { color: #16a085; margin-top: 20px; }
+            table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            code { background-color: #f8f8f8; padding: 2px 5px; border-radius: 3px; font-family: Consolas, monospace; }
+            pre { background-color: #f8f8f8; padding: 10px; border-radius: 5px; overflow-x: auto; }
+            blockquote { border-left: 4px solid #3498db; margin: 0; padding-left: 15px; color: #555; background: #f0fbff; padding: 10px; }
+            /* Mermaid styling handled by library, just ensure container is visible */
+            .mermaid { margin: 20px 0; text-align: center; }
+        </style>
+        <script type="module">
+            import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+            mermaid.initialize({ startOnLoad: true });
+        </script>
+    </head>
+    <body>
+    <h1 id="exsim-war-room---master-user-manual">ExSim War Room - Master User Manual</h1><p><b>Version 3.0 | January 2026</b></p><p>Welcome to the <b>ExSim War Room</b>, the elite decision-support suite for the ExSim Business Simulation. This manual is your comprehensive guide to mastering the seven integrated dashboards. It goes beyond simple "how-to" instructions to explain the <b>strategic logic</b> and <b>mathematical rationale</b> behind every tool.</p><hr><h2 id="-table-of-contents">📚 Table of Contents</h2><p>1.  <a href="#1-system-architecture--workflow">System Architecture & Workflow</a></p><p>2.  <a href="#2-global-data-flow">Global Data Flow</a></p><p>3.  <a href="#3-cmo-dashboard-marketing--innovation">CMO Dashboard (Marketing)</a></p><p>4.  <a href="#4-production-dashboard-manufacturing">Production Dashboard (Manufacturing)</a></p><p>5.  <a href="#5-purchasing-dashboard-sourcing">Purchasing Dashboard (Sourcing)</a></p><p>6.  <a href="#6-logistics-dashboard-supply-chain">Logistics Dashboard (Supply Chain)</a></p><p>7.  <a href="#7-cpo-dashboard-workforce">CPO Dashboard (Workforce)</a></p><p>8.  <a href="#8-esg-dashboard-sustainability">ESG Dashboard (Sustainability)</a></p><p>9.  <a href="#9-cfo-dashboard-finance">CFO Dashboard (Finance)</a></p><p>10. <a href="#10-known-issues--best-practices">Known Issues & Best Practices</a></p><p>11. <a href="#appendix-a-formula-index">Appendix A: Formula Index</a></p><p>12. <a href="#appendix-b-case-reference-index">Appendix B: Case Reference Index</a></p><hr><h2 id="1-system-architecture-workflow">1. System Architecture & Workflow</h2><p>The War Room operates as a <b>Cascade System</b>. This means you cannot make decisions in isolation. A change in your Marketing strategy (CMO) ripples down to Production, which impacts Purchasing and Logistics, all of which determine your Financial health.</p><p><b>Recommended Execution Order:</b></p><div class="mermaid">
+graph TD
+    CMO[1. CMO Marketing] -->|Demand Forecast| PROD[2. Production]
+    PROD -->|Material Needs| PURCH[3. Purchasing]
+    PROD -->|Worker Needs| CPO[5. CPO Workforce]
+    PROD -->|Output Volume| LOG[4. Logistics]
+    LOG -->|Transport Costs| CFO[7. CFO Finance]
+    CPO -->|Labor Costs| CFO
+    PURCH -->|Material Costs| CFO
+    ESG[6. ESG Sustainability] -->|Tax Savings| CFO
+
+    style CMO fill:#e1f5fe,stroke:#01579b
+    style PROD fill:#fff3e0,stroke:#e65100
+    style PURCH fill:#f3e5f5,stroke:#4a148c
+    style LOG fill:#fbe9e7,stroke:#bf360c
+    style CPO fill:#e8f5e9,stroke:#1b5e20
+    style ESG fill:#f1f8e9,stroke:#33691e
+    style CFO fill:#fff8e1,stroke:#ff6f00
+</div>
+<hr><h2 id="2-global-data-flow">2. Global Data Flow</h2><p>Dashboards rely on two types of data:</p><p>1.  <b>ExSim Reports:</b> Raw Excel files exported from the simulation (located in <code>Reports/</code>).</p><p>2.  <b>Shared Outputs:</b> Python-generated data passed between dashboards (stored in <code>shared_outputs.json</code>).</p><div class="mermaid">
+graph LR
+    subgraph "Inputs (Reports/)"
+        R_MKT[Market Report]
+        R_PROD[Production Report]
+        R_FIN[Financial Stmts]
+        R_HR[Workers Balance]
+    end
+
+    subgraph "War Room Engine"
+        CMO[CMO Dash]
+        PROD[Production Dash]
+        CFO[CFO Dash]
+        SHARED[(Shared Outputs)]
+    end
+
+    R_MKT --> CMO
+    R_PROD --> PROD
+    R_FIN --> CFO
+    R_HR --> CPO
+
+    CMO -->|Est Revenue| SHARED
+    PROD -->|Prod Plan| SHARED
+    SHARED --> CFO
+</div>
+<hr><h2 id="3-cmo-dashboard-marketing-innovation">3. CMO Dashboard (Marketing & Innovation)</h2><h3 id="-objective">🎯 Objective</h3><p><b>Maximize Market Share & Margin.</b></p><p>The goal is NOT just to sell more, but to sell *profitably*. You need to find the "sweet spot" price that maximizes the Contribution Margin <code>(Price - Cost) * Volume</code> while spending just enough on Media (TV/Internet) to maintain awareness.</p><h3 id="-usage-guide">🛠 Usage Guide</h3><p>1.  <b>Segment Pulse:</b> Look for red flags. If "High Segment Awareness" is < 30%, you are invisible to premium buyers.</p><p>2.  <b>Strategy Cockpit:</b></p><ul>
+<li>  <b>Price Slider:</b> Move this up/down. Watch the <b>Est. Revenue</b> metric change.</li><li>  <b>TV Budget:</b> Input a value (e.g., $50,000). The dashboard will estimate the awareness gain.</li><li>  <b>Zone Forecast:</b> Enter your *Target Demand*. <b>Crucial:</b> Be realistic. If you forecast 10k units but only have capacity for 5k, you leave money on the table.</li><h3 id="-logic-rationale">🧠 Logic & Rationale</h3><li>  <b>Awareness Decay:</b> Awareness drops by ~5-10% every round if you stop advertising. The dashboard calculates the "maintenance spend" needed to hold steady.</li><li>  <b>Price Sensitivity:</b> The High segment is less price-sensitive than the Low segment. The dashboard uses different elasticity curves for each to predict demand.</li><h3 id="-input-data">📥 Input Data</h3><table><tr><th>File / Source</th><th>Data extracted</th></tr><tr><td>`market_report.xlsx`</td><td>Market share, competitor prices, awareness levels</td></tr><tr><td>`product_features.xlsx`</td><td>Available innovation features and costs</td></tr></table>
+<h3 id="-key-formulas">🧮 Key Formulas</h3><li><b>Awareness Gap:</b> `100% - Current Awareness` (Target for TV/Internet spend)</li><li><b>Est. Revenue:</b> `Target Demand * Price`</li><li><b>Contribution Margin:</b> `(Price - Unit Cost) * Target Demand`</li><h3 id="-output-deliverables">📤 Output Deliverables</h3><table><tr><th>Tab</th><th>Description</th></tr><tr><td>`UPLOAD_READY_MARKETING`</td><td>Copy-paste Pricing, TV, Internet, and Staffing decisions</td></tr><tr><td>`UPLOAD_READY_INNOVATION`</td><td>Binary (1/0) decisions for R&D features</td></tr></table>
+</ul>
+<hr><h2 id="4-production-dashboard-manufacturing">4. Production Dashboard (Manufacturing)</h2><h3 id="-objective">🎯 Objective</h3><p><b>100% Fulfillment with 0% Waste.</b></p><p>Your job is to translate the CMO's "Dream Demand" into "Physical Reality". You must ensure you have enough Machines and Workers in the right Zones to build the product.</p><h3 id="-usage-guide">🛠 Usage Guide</h3><p>1.  <b>Zone Calculators:</b></p><ul>
+<li>  <b>Target Production:</b> This defaults to the CMO's forecast. Reduce it if you lack capacity.</li><li>  <b>Overtime Toggle:</b> Switch to `YES` if `Real Output < Target`. This costs 50% more per unit but saves the sale.</li></ul>
+<p>2.  <b>Resource Manager:</b></p><ul>
+<li>  <b>Buy Machines:</b> If `Utilization > 100%`, the dashboard recommends buying machines (e.g., "+2 M1").</li><h3 id="-logic-rationale">🧠 Logic & Rationale</h3><li>  <b>Zone Independence:</b> A machine in the West cannot build products for the East. The dashboard treats each zone as a separate factory.</li><li>  <b>Bottleneck Analysis:</b> Output is limited by the *scarcest* resource: `Min(Machine Capacity, Worker Capacity, Material Availability)`.</li><h3 id="-input-data">📥 Input Data</h3><table><tr><th>File / Source</th><th>Data extracted</th></tr><tr><td>`production_report.xlsx`</td><td>Current machines, utilization, and capacity</td></tr><tr><td>`Shared: CMO`</td><td><b>Target Demand</b> (Sales Forecast) per zone</td></tr></table>
+<h3 id="-key-formulas">🧮 Key Formulas</h3><li><b>Effective Capacity:</b> `(Machines * Machine_Rate + Workers * Worker_Rate) * Efficiency`</li><li><b>Capacity Gap:</b> `Target Production - Effective Capacity`</li><li><b>Machine ROI:</b> `(Price - Scrap Value) / Payback Period`</li><h3 id="-output-deliverables">📤 Output Deliverables</h3><table><tr><th>Tab</th><th>Description</th></tr><tr><td>`UPLOAD_READY_PRODUCTION`</td><td>Production targets and machine purchase orders</td></tr></table>
+</ul>
+<hr><h2 id="5-purchasing-dashboard-sourcing">5. Purchasing Dashboard (Sourcing)</h2><h3 id="-objective">🎯 Objective</h3><p><b>Prevent Stockouts ("The Silent Killer").</b></p><p>If you run out of raw materials, the factory stops. Purchasing uses <b>MRP (Material Requirements Planning)</b> to back-calculate exactly when to order based on supplier lead times.</p><h3 id="-usage-guide">🛠 Usage Guide</h3><p>1.  <b>Supplier Config:</b> Verify Lead Times (e.g., 2 Fortnights).</p><p>2.  <b>MRP Engine:</b></p><ul>
+<li>  Look at the <b>Order Matrix</b>.</li><li>  <b>Red Cells:</b> Indicate a future stockout. You MUST order in the column *before* the red cell starts to account for lead time.</li></ul>
+<p>3.  <b>Cost Analysis:</b> Switch suppliers if one becomes too expensive, but beware of quality drops.</p><h3 id="-logic-rationale">🧠 Logic & Rationale</h3><ul>
+<li>  <b>Time Travel Rule:</b> In ExSim, an order placed in Week 1 with a 2-week lead time arrives in Week 3. The dashboard shifts your "Need Date" back by the lead time to give you the "Order Date".</li><li>  <b>EOQ (Economic Order Quantity):</b> It balances `Ordering Cost` (flat fee per order) vs. `Holding Cost` (warehousing rent). It's cheaper to place fewer large orders than many small ones.</li><h3 id="-input-data">📥 Input Data</h3><table><tr><th>File / Source</th><th>Data extracted</th></tr><tr><td>`suppliers.xlsx`</td><td>Lead times, batch sizes, and unit costs</td></tr><tr><td>`Shared: Production`</td><td><b>Target Production</b> (Material Requirement Driver)</td></tr></table>
+<h3 id="-key-formulas">🧮 Key Formulas</h3><li><b>Net Requirement:</b> `Target Production - Beginning Inventory - Scheduled Receipts`</li><li><b>Order Timing:</b> `Order FN = Need FN - Lead Time`</li><li><b>Stockout Risk:</b> If `Projected Inventory < 0`, cell turns <b>RED</b>.</li><h3 id="-output-deliverables">📤 Output Deliverables</h3><table><tr><th>Tab</th><th>Description</th></tr><tr><td>`UPLOAD_READY_PROCUREMENT`</td><td>Supplier orders (Quantity & Supplier) per fortnight</td></tr></table>
+</ul>
+<hr><h2 id="6-logistics-dashboard-supply-chain">6. Logistics Dashboard (Supply Chain)</h2><h3 id="-objective">🎯 Objective</h3><p><b>Balance the Network.</b></p><p>You might produce in the West but sell in the East. Logistics plans the shipments to move goods to where the customers are, avoiding stockouts in sales zones and overflows in factory zones.</p><h3 id="-usage-guide">🛠 Usage Guide</h3><p>1.  <b>Inventory Tetris:</b></p><ul>
+<li>  <b>Left Side:</b> Origin Zones (Factories). If bars are Purple (Full), ship OUT.</li><li>  <b>Right Side:</b> Destination Zones (Markets). If bars are Red (Empty), ship IN.</li></ul>
+<p>2.  <b>Shipment Builder:</b></p><ul>
+<li>  Add a route: `West -> East`.</li><li>  Choose Mode: `Train` (Cheap/Slow) vs `truck` (Avg) vs `Plane` (Fast/Pricey).</li><li>  The "Arrival FN" updates automatically.</li><h3 id="-logic-rationale">🧠 Logic & Rationale</h3><li>  <b>Lead Time vs. Cost Trade-off:</b> Planes are instant (0 FN) but cost $25/unit. Trains take 2 FN but cost $5/unit. The dashboard hints: "Use Trains for base load, Planes for emergencies."</li><li>  <b>Warehouse Cap:</b> If you exceed storage limits, ExSim charges massive overflow penalties. The dashboard flags this as <b>CRITICAL OVERFLOW</b>.</li><h3 id="-input-data">📥 Input Data</h3><table><tr><th>File / Source</th><th>Data extracted</th></tr><tr><td>`logistics.xlsx`</td><td>Shipping costs per mode (Train/Truck/Plane)</td></tr><tr><td>`Shared: Production`</td><td><b>Factory Output</b> (Supply)</td></tr><tr><td>`Shared: CMO`</td><td><b>Target Sales</b> (Demand)</td></tr></table>
+<h3 id="-key-formulas">🧮 Key Formulas</h3><li><b>Ending Inventory:</b> `Begin Inv + Production + Incoming Shipments - Sales - Outgoing Shipments`</li><li><b>Warehouse Utilization:</b> `Ending Inventory / Warehouse Capacity` (Alert if > 100%)</li><li><b>Shipment Cost:</b> `Qty * Cost_Per_Unit_Mode` (Train=$5, Truck=$10, Plane=$25)</li><h3 id="-output-deliverables">📤 Output Deliverables</h3><table><tr><th>Tab</th><th>Description</th></tr><tr><td>`UPLOAD_READY_LOGISTICS`</td><td>Shipping decisions (Origin -> Dest, Mode, Qty)</td></tr></table>
+</ul>
+<hr><h2 id="7-cpo-dashboard-workforce">7. CPO Dashboard (Workforce)</h2><h3 id="-objective">🎯 Objective</h3><p><b>Zero Strikes, High Motivation.</b></p><p>Unhappy workers strike (0 production) or work slowly (low efficiency). The CPO dashboard calculates exactly how much to pay to keep them happy without overspending.</p><h3 id="-usage-guide">🛠 Usage Guide</h3><p>1.  <b>Workforce Planning:</b></p><ul>
+<li>  <b>Hiring Needed:</b> Automatically calculated from Production's machine plan.</li><li>  <b>Turnover:</b> Adjust this slider. High turnover means you constantly pay firing/hiring costs.</li></ul>
+<p>2.  <b>Compensation Strategy:</b></p><ul>
+<li>  <b>Salary Input:</b> Enter a raise (e.g., +3%).</li><li>  <b>Strike Risk Meter:</b> If this points to Red, INCREASE SALARY immediately. Most strikes happen because salary didn't keep up with inflation.</li><h3 id="-logic-rationale">🧠 Logic & Rationale</h3><li>  <b>Inflation Catch-up:</b> Workers verify their real purchasing power. If Inflation is 5% and you give a 2% raise, they explicitly lose money. The dashboard flags this as a "Real Wage Cut".</li><li>  <b>Safety Threshold:</b> Workers accept lower wages if Safety/Training budgets are high.</li><h3 id="-input-data">📥 Input Data</h3><table><tr><th>File / Source</th><th>Data extracted</th></tr><tr><td>`workers_balance.xlsx`</td><td>Current staff count and absenteeism rate</td></tr><tr><td>`Shared: Production`</td><td><b>Required Workers</b> (Headcount Target)</td></tr></table>
+<h3 id="-key-formulas">🧮 Key Formulas</h3><li><b>Strike Risk Threshold:</b> `Prev Profit Share > 0 OR New Salary < Prev Salary * (1 + Inflation)`</li><li><b>Hiring Need:</b> `Max(0, Required Workers - (Current Staff - Turnover))`</li><li><b>Labor Cost:</b> `(Base Salary + Benefits) * Headcount`</li><h3 id="-output-deliverables">📤 Output Deliverables</h3><table><tr><th>Tab</th><th>Description</th></tr><tr><td>`UPLOAD_READY_PEOPLE`</td><td>Hiring/Firing counts, New Salaries, Benefit %</td></tr></table>
+</ul>
+<hr><h2 id="8-esg-dashboard-sustainability">8. ESG Dashboard (Sustainability)</h2><h3 id="-objective">🎯 Objective</h3><p><b>Turn "Green" into "Gold".</b></p><p>Carbon taxes can eat 10-20% of your profit. This dashboard acts as an investment banker for sustainability, comparing the ROI of Solar vs. Trees vs. Credits.</p><h3 id="-usage-guide">🛠 Usage Guide</h3><p>1.  <b>Strategy Selector:</b></p><ul>
+<li>  Review the <b>Pareto Chart</b>. It ranks initiatives by "Cost per Ton of CO2 Saved".</li><li>  <b>Solar PV:</b> High upfront cost, but pays for itself in ~3 years.</li><li>  <b>Trees:</b> Low impact, but good for PR.</li></ul>
+<p>2.  <b>Decision:</b> Allocate budget to the initiative with the steepest slope (highest efficiency).</p><h3 id="-logic-rationale">🧠 Logic & Rationale</h3><ul>
+<li>  <b>Abatement Curve:</b> The dashboard builds a marginal abatement cost curve (MACC). It advises you to "Pick the low hanging fruit first" (cheapest reductions).</li><li>  <b>Tax Shield:</b> Every $1 spent on effective green tech saves $X in future tax.</li><h3 id="-input-data">📥 Input Data</h3><table><tr><th>File / Source</th><th>Data extracted</th></tr><tr><td>`esg_report.xlsx`</td><td>Current CO2 emissions and Tax Bill</td></tr></table>
+<h3 id="-key-formulas">🧮 Key Formulas</h3><li><b>Payback (Solar):</b> `Installation Cost / Annual Tax Savings`</li><li><b>Tax Liability:</b> `(Emissions - Reductions) * Tax Rate`</li><li><b>Efficiency:</b> `Cost / Ton of CO2 Reduced`</li><h3 id="-output-deliverables">📤 Output Deliverables</h3><table><tr><th>Tab</th><th>Description</th></tr><tr><td>`UPLOAD_READY_ESG`</td><td>Investments in Solar, Trees, Credits, Green Energy</td></tr></table>
+</ul>
+<hr><h2 id="9-cfo-dashboard-finance">9. CFO Dashboard (Finance)</h2><h3 id="-objective">🎯 Objective</h3><p><b>The Final Sanity Check.</b></p><p>Before you hit "Submit" in ExSim, the CFO dashboard aggregates every dollar spent by CMO, CIO, CPO, etc., to tell you if you will go bankrupt.</p><h3 id="-usage-guide">🛠 Usage Guide</h3><p>1.  <b>Liquidity Monitor:</b></p><ul>
+<li>  <b>Ending Cash:</b> Look at the bottom row.</li><li>  <b>RED (< 0):</b> You are insolvent. You MUST take an emergency loan or cut marketing/machine spend.</li><li>  <b>GREEN (> $200k):</b> You have idle cash. Pay down debt or invest in innovation.</li></ul>
+<p>2.  <b>Debt Manager:</b></p><ul>
+<li>  Calculates new loan payments. Use this if your Ending Cash is Red.</li><h3 id="-logic-rationale">🧠 Logic & Rationale</h3><li>  <b>Cash Flow vs. Profit:</b> You can be profitable (high sales) but bankrupt (ran out of cash to pay suppliers). The CFO dashboard focuses on *Liquidity* (Cash on hand).</li><li>  <b>Credit Rating:</b> If `Debt / Assets > 60%`, the bank considers you "High Risk" and hikes interest rates.</li><h3 id="-input-data">📥 Input Data</h3><table><tr><th>File / Source</th><th>Data extracted</th></tr><tr><td>`financial_statements.xlsx`</td><td>Assets, Liabilities, Equity, Retained Earnings</td></tr><tr><td>`Shared: All Dashboards`</td><td>Aggregated Spending (Marketing + Machines + Materials + Labor + Logistics)</td></tr></table>
+<h3 id="-key-formulas">🧮 Key Formulas</h3><li><b>Ending Cash:</b> `Begin Cash + Inflows (Sales, Loans) - Outflows (Spend, Tax, Dividends)`</li><li><b>Solvency Check:</b> If `Ending Cash < 0` -> <b>INSOLVENT</b> (Emergency Loan required)</li><li><b>Debt Ratio:</b> `Total Liabilities / Total Assets` (Must be < 60% for good credit)</li><h3 id="-output-deliverables">📤 Output Deliverables</h3><table><tr><th>Tab</th><th>Description</th></tr><tr><td>`UPLOAD_READY_FINANCE`</td><td>Loan requests, Credit Line changes, Dividends</td></tr></table>
+</ul>
+<hr><h2 id="10-known-issues-best-practices">10. Known Issues & Best Practices</h2><blockquote><b>Files Must Remain in `Reports/`</b>: The dashboards look for files in specific locations. Do not rename or move the `Reports` folder.</blockquote><blockquote><b>Cascade Order Matters</b>: Always run <b>CMO first</b> and <b>CFO last</b>. If you change the Marketing plan, you must re-run Production, Purchasing, etc., to update the CFO's data.</blockquote><ul>
+<li>  <b>Hardcoded Fortnights:</b> The system is currently pegged to a standard 8-fortnight round.</li><li>  <b>Zero Values:</b> If a dashboard is all zeros, verify that the `Reports` folder has valid Excel files and not just empty templates.</li><li>  <b>Time Travel logic:</b> Purchasing logic assumes strict lead times. If you order late, materials *will* arrive late.</li></ul>
+<hr><h2 id="appendix-a-formula-index">Appendix A: Formula Index</h2><p>A consolidated reference for the math powering the War Room.</p><h3 id="marketing-cmo">Marketing (CMO)</h3><ul>
+<li>  <b>Market Share %</b>: `Company Sales / Total Market Sales`</li><li>  <b>Price Elasticity</b>: `(Change in Qty / Qty) / (Change in Price / Price)` (Implicit in simulation)</li><h3 id="production">Production</h3><li>  <b>Utilization Rate</b>: `Actual Output / Max Capacity`</li><li>  <b>Scrap Rate</b>: `Defects / Total Production`</li><h3 id="supply-chain-purchasing-logistics">Supply Chain (Purchasing & Logistics)</h3><li>  <b>EOQ (Economic Order Quantity)</b>: `Sqrt((2 * Demand * OrderingCost) / HoldingCost)` (Guidance only)</li><li>  <b>Safety Stock</b>: `(Max Daily Usage * Max Lead Time) - (Avg Daily Usage * Avg Lead Time)`</li><h3 id="hr-finance-cpo-cfo">HR & Finance (CPO & CFO)</h3><li>  <b>Net Profit</b>: `Revenue - COGS - Expenses - Interest - Tax`</li><li>  <b>Note on Strike Logic</b>: Strikes are probabilistic but highly correlated with `Salary < Inflation Adjusted Previous` and `Low Safety Budget`.</li><li>  <b>Liquidity Ratio</b>: `Current Assets / Current Liabilities`</li></ul>
+<hr><h2 id="appendix-b-case-reference-index">Appendix B: Case Reference Index</h2><p>Map the dashboard inputs back to the original <code>ExSim Case.pdf</code> for cross-verification.</p><table><tr><th>Dashboard</th><th>Case Data Point</th><th>Table/Graph Ref</th></tr><tr><td><b>CMO</b></td><td>Customer Sensitivity (Price vs. Quality)</td><td><b>Graph 3.1: Segment Preferences</b></td></tr><tr><td><b>Production</b></td><td>Machine Capacity & Setup Costs</td><td><b>Table 4.2: Machine Specifications</b></td></tr><tr><td><b>Purchasing</b></td><td>Supplier Lead Times & Costs</td><td><b>Table 5.1: Supplier Contract Terms</b></td></tr><tr><td><b>Logistics</b></td><td>Transportation Lead Times & Costs</td><td><b>Table 6.3: Logistics Matrix</b></td></tr><tr><td><b>CPO</b></td><td>Minimum Wage & Inflation Base</td><td><b>Page 12: Economic Indicators</b></td></tr><tr><td><b>ESG</b></td><td>CO2 Tax Rate per Ton</td><td><b>Page 15: Regulatory Framework</b></td></tr><tr><td><b>CFO</b></td><td>Bank Interest Rates & Credit Limits</td><td><b>Table 8.1: Financing Terms</b></td></tr></table>
+
+    </body>
+    </html>
+    

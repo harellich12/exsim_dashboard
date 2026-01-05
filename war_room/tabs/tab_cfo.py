@@ -21,14 +21,53 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 try:
-    from case_parameters import COMMON
+    from case_parameters import COMMON, PRODUCTION
     FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
 except ImportError:
     FORTNIGHTS = list(range(1, 9))
+    PRODUCTION = {}
 
 ST_LIMIT = 500000  # Short-term debt limit
 LT_LIMIT = 2000000  # Long-term debt limit
 DEFAULT_TAX_RATE = 0.25
+
+
+def calculate_projected_costs():
+    """
+    Calculate machine depreciation and module costs from case_parameters.
+    Returns (depreciation, admin_cost, rent_cost) tuple.
+    """
+    machinery = PRODUCTION.get('MACHINES', PRODUCTION.get('MACHINERY', {}))
+    initial_machines = PRODUCTION.get('INITIAL_MACHINES', {})
+    facilities = PRODUCTION.get('FACILITIES', {})
+    
+    total_depr = 0.0
+    
+    # Machine Depreciation: price / lifespan for each machine
+    for region, sections in initial_machines.items():
+        for section, machines in sections.items():
+            for m_type, count in machines.items():
+                m_config = machinery.get(m_type)
+                # Handle M3_ALPHA vs M3-ALPHA naming inconsistency
+                if not m_config and "_" in m_type:
+                    m_config = machinery.get(m_type.replace("_", "-"))
+                if m_config:
+                    price = m_config.get('price', 0)
+                    lifespan = m_config.get('lifespan_periods', 10)
+                    if lifespan > 0:
+                        total_depr += (count * price / lifespan)
+    
+    # Module Costs from case_parameters
+    initial_modules = facilities.get('INITIAL_MODULES', {})
+    total_module_count = sum(initial_modules.values())
+    admin_per_module = facilities.get('ADMIN_COST_PER_MODULE_PER_PERIOD', 10000)
+    rent_per_module = facilities.get('MODULE_RENT_COST_PER_PERIOD', 7500)
+    
+    total_admin = total_module_count * admin_per_module
+    total_rent = total_module_count * rent_per_module
+    
+    return total_depr, total_admin, total_rent
+
 
 
 def init_cfo_state():
@@ -355,23 +394,33 @@ def render_profit_control():
     last_net = st.session_state.cfo_net_profit
     gross_margin_pct = st.session_state.cfo_gross_margin_pct
     
+    # Get costs from module-level function
+    calc_depr, calc_admin, calc_rent = calculate_projected_costs()
+    
+    # Use calculated or defaults
+    current_depr = calc_depr if calc_depr > 0 else 50000
+    current_admin = calc_admin if calc_admin > 0 else 60000
+    current_rent = calc_rent if calc_rent > 0 else 45000
+
     income_data = pd.DataFrame({
         'Line_Item': ['Net Sales / Revenue', 'Cost of Goods Sold', 'Gross Margin', 
-                     'S&A Expenses', 'Depreciation', 'Interest', 'Net Profit'],
-        'Last_Round': [last_revenue, last_cogs, last_gross, 200000, 50000, 20000, last_net],
-        'This_Round': [last_revenue * 1.1, 0, 0, 200000, 50000, 20000, 0]
+                     'Module Admin (S&A)', 'Module Rent', 'Depreciation', 'Interest', 'Net Profit'],
+        'Last_Round': [last_revenue, last_cogs, last_gross, current_admin, current_rent, current_depr, 20000, last_net],
+        'This_Round': [last_revenue * 1.1, 0, 0, current_admin, current_rent, current_depr, 20000, 0]
     })
     
     # Calculate projected values
     proj_revenue = income_data.at[0, 'This_Round']
     proj_cogs = proj_revenue * (1 - gross_margin_pct)
     proj_gross = proj_revenue - proj_cogs
-    proj_expenses = income_data.at[3, 'This_Round'] + income_data.at[4, 'This_Round'] + income_data.at[5, 'This_Round']
+    # Sum indices 3, 4, 5, 6 (Admin, Rent, Depr, Interest)
+    proj_expenses = income_data.at[3, 'This_Round'] + income_data.at[4, 'This_Round'] + \
+                    income_data.at[5, 'This_Round'] + income_data.at[6, 'This_Round']
     proj_net = proj_gross - proj_expenses
     
     income_data.at[1, 'This_Round'] = proj_cogs
     income_data.at[2, 'This_Round'] = proj_gross
-    income_data.at[6, 'This_Round'] = proj_net
+    income_data.at[7, 'This_Round'] = proj_net
     
     # Calculate variance
     income_data['Variance'] = income_data.apply(
@@ -384,6 +433,17 @@ def render_profit_control():
     CALC_STYLE = {'backgroundColor': '#E8F5E9', 'color': '#2E7D32'}
     REF_STYLE = {'backgroundColor': '#F5F5F5', 'color': '#616161'}
     
+    # JS Logic for Variance
+    # Variance = (This_Round - Last_Round) / Last_Round
+    variance_getter = JsCode("""
+        function(params) {
+            let last = Number(params.data.Last_Round);
+            let this_round = Number(params.data.This_Round);
+            if (last === 0) return 0;
+            return (this_round - last) / last;
+        }
+    """)
+
     variance_js = JsCode("""
         function(params) {
             if (Math.abs(params.value) > 0.2) {
@@ -400,7 +460,9 @@ def render_profit_control():
     gb.configure_column('This_Round', headerName='This Round', editable=True, width=150,
                        valueFormatter="'$' + value.toLocaleString()", cellStyle=EDITABLE_STYLE)
     gb.configure_column('Variance', editable=False, width=120,
-                       valueFormatter="(value * 100).toFixed(1) + '%'", cellStyle=variance_js)
+                       valueFormatter="(value * 100).toFixed(1) + '%'", 
+                       cellStyle=variance_js,
+                       valueGetter=variance_getter)
     
     AgGrid(
         income_data,
@@ -680,6 +742,22 @@ def render_cross_reference():
         material = purch_data.get('supplier_spend', 0)
         logistics = clo_data.get('logistics_costs', 0)
         
+        # Ensure safely converted floats
+        try:
+            labor = float(labor)
+        except (ValueError, TypeError):
+            labor = 0.0
+            
+        try:
+            material = float(material)
+        except (ValueError, TypeError):
+            material = 0.0
+            
+        try:
+            logistics = float(logistics)
+        except (ValueError, TypeError):
+            logistics = 0.0
+        
         total_variable = labor + material + logistics
         
         # DataFrame for breakdown
@@ -773,3 +851,37 @@ def render_cfo_tab():
         
     with subtabs[5]:
         render_cross_reference()
+    
+    # ---------------------------------------------------------
+    # EXSIM SHARED OUTPUTS - EXPORT
+    # ---------------------------------------------------------
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate final outputs for export
+        # 'cash_flow_projection', 'debt_levels', 'liquidity_status'
+        
+        # Liquidity Status (Projected FN8 or FN1? Or min?)
+        # Let's take the status of the first period or the worst status?
+        # Typically the 'Next Period' is most relevant (FN1)
+        results_df = calculate_cash_flow()
+        fn1_status = results_df.at[0, 'Status']
+        final_cash = results_df.at[0, 'Closing']
+        
+        # Debt Levels
+        # Total Borrowed / Total Assets? Or just total amount?
+        # Schema: "debt_levels": "835497" (string?) or number. 
+        # Using string in example, allow flexible.
+        total_debt = st.session_state.cfo_total_liabilities
+        
+        outputs = {
+            'cash_flow_projection': {'final_cash': final_cash, 'tax_payments': st.session_state.cfo_tax_payments},
+            'debt_levels': total_debt,
+            'liquidity_status': fn1_status
+        }
+        
+        export_dashboard_data('CFO', outputs)
+        
+    except Exception as e:
+        print(f"Shared Output Export Error: {e}")
+

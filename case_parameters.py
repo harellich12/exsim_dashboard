@@ -2,7 +2,7 @@
 ExSim Case Parameters - Mezquite Inc.
 -------------------------------------
 Single source of truth for all simulation constants derived from the
-Mezquite Inc. / ElectroClean Case Study.
+Mezquite Inc. / ElectroClean Case Study (EXSIM Case.pdf).
 
 Usage:
     from case_parameters import FINANCIAL, MARKET, PRODUCTION, WORKFORCE, LOGISTICS
@@ -22,13 +22,13 @@ COMMON = {
     "SEGMENTS": ["High", "Low"],
     
     # Production sections - used by Production Manager
-    "SECTIONS": ["Section 1", "Section 2", "Section 3"],
+    "SECTIONS": ["Section 1", "Section 2", "Section 3", "Section 4", "Section 5"],
     
     # Machine types - used by Production, CFO (depreciation)
     "MACHINE_TYPES": ["M1", "M2", "M3-alpha", "M3-beta", "M4"],
     
     # Transport modes - used by CLO
-    "TRANSPORT_MODES": ["Train", "Truck", "Plane"],
+    "TRANSPORT_MODES": ["Train", "Truck", "Airplane"],
     
     # Parts and pieces - used by Purchasing
     "PARTS": ["Part A", "Part B"],
@@ -56,12 +56,13 @@ FINANCIAL = {
         }
     },
     
-    # Payment Terms Impact (Discount %)
+    # Payment Terms Impact (Table III.3)
+    # Payment type -> (fortnights delay, discount %)
     "PAYMENT_TERMS": {
-        "A": 0.13,  # 0 fortnights wait -> 13% discount cost
-        "B": 0.09,  # 2 fortnights wait
-        "C": 0.05,  # 4 fortnights wait
-        "D": 0.00   # 8 fortnights wait -> 0% discount
+        "A": {"fortnights": 0, "discount": 0.130},  # Immediate payment -> 13% discount
+        "B": {"fortnights": 2, "discount": 0.075},  # 2 fortnights -> 7.5% discount
+        "C": {"fortnights": 4, "discount": 0.025},  # 4 fortnights -> 2.5% discount
+        "D": {"fortnights": 8, "discount": 0.000}   # 8 fortnights -> 0% discount
     }
 }
 
@@ -72,7 +73,7 @@ MARKET = {
     "ZONES": ["Center", "West", "North", "East", "South"],
     "SEGMENTS": ["High", "Low"],
     
-    # Total Addressable Market (Households/Population)
+    # Total Addressable Market (Table I.1 - Households/Population per company)
     "POPULATION": {
         "Center": {"High": 35200, "Low": 74800},
         "West":   {"High": 24000, "Low": 51000},
@@ -85,20 +86,52 @@ MARKET = {
     
     # Innovation Features Cost Structure (Table II.1)
     "INNOVATION_COSTS": {
+        # ID 1
         "STAINLESS MATERIAL":         {"upfront": 15000, "variable": 0.15},
+        # ID 2
         "RECYCLABLE MATERIALS":       {"upfront": 30000, "variable": 0.15},
+        # ID 3
         "ENERGY EFFICIENCY":          {"upfront": 30000, "variable": 0.15},
-        "LIGHTER AND MORE COMPACT":  {"upfront": 35000, "variable": 0.30},
-        "IMPACT RESISTANCE":          {"upfront": 40000, "variable": 0.30},
-        "NOISE REDUCTION":            {"upfront": 40000, "variable": 0.30},
+        # ID 4
+        "LIGHTER AND MORE COMPACT":   {"upfront": 30000, "variable": 0.30},
+        # ID 5
+        "IMPACT-RESISTANCE":          {"upfront": 30000, "variable": 0.30},
+        # ID 6
+        "NOISE REDUCTION":            {"upfront": 45000, "variable": 0.30},
+        # ID 7
         "IMPROVED BATTERY CAPACITY":  {"upfront": 45000, "variable": 0.45},
-        "SELF-CLEANING":              {"upfront": 60000, "variable": 0.60},
-        "SPEED SETTINGS":             {"upfront": 60000, "variable": 0.60},
-        "DIGITAL CONTROLS":           {"upfront": 75000, "variable": 0.75},
-        "VOICE ASSISTANCE INTEGRATION":{"upfront": 75000, "variable": 0.75},
-        "AUTOMATION AND PROGRAMMABILITY":{"upfront": 90000, "variable": 0.90},
-        "MULTIFUNCTIONAL ACCESSORIES": {"upfront": 90000, "variable": 0.90},
+        # ID 8
+        "SELF-CLEANING":              {"upfront": 45000, "variable": 0.45},
+        # ID 9
+        "SPEED SETTINGS":             {"upfront": 45000, "variable": 0.45},
+        # ID 10
+        "DIGITAL CONTROLS":           {"upfront": 45000, "variable": 0.45},
+        # ID 11
+        "VOICE ASSISTANCE INTEGRATION": {"upfront": 45000, "variable": 0.75},
+        # ID 12
+        "AUTOMATION AND PROGRAMMABILITY": {"upfront": 45000, "variable": 0.75},
+        # ID 13
+        "MULTIFUNCTIONAL ACCESSORIES": {"upfront": 100000, "variable": 1.00},
+        # ID 14
         "MAPPING TECHNOLOGY":         {"upfront": 100000, "variable": 1.00}
+    },
+    
+    # CO2 Emissions from Improvements (Table VII.1)
+    "INNOVATION_CO2": {
+        "STAINLESS MATERIAL":         -0.025,
+        "RECYCLABLE MATERIALS":        0.023,
+        "ENERGY EFFICIENCY":          -0.025,
+        "LIGHTER AND MORE COMPACT":    0.045,
+        "IMPACT-RESISTANCE":          -0.050,
+        "NOISE REDUCTION":             0.045,
+        "IMPROVED BATTERY CAPACITY":  -0.075,
+        "SELF-CLEANING":               0.068,
+        "SPEED SETTINGS":              0.068,
+        "DIGITAL CONTROLS":           -0.075,
+        "VOICE ASSISTANCE INTEGRATION": 0.107,
+        "AUTOMATION AND PROGRAMMABILITY": 0.107,
+        "MULTIFUNCTIONAL ACCESSORIES": 0.143,
+        "MAPPING TECHNOLOGY":          0.143
     }
 }
 
@@ -106,34 +139,132 @@ MARKET = {
 # 3. PRODUCTION PARAMETERS (Production Manager)
 # =============================================================================
 PRODUCTION = {
+    # Table IV.1 - Machine characteristics
     "MACHINERY": {
         "M1": {
-            "cost": 10600,
-            "capacity_units": 200,
-            "workers_required": 10, # Implied/Estimated (verify?)
-            "type": "Manual"
+            "price": 10600,
+            "capacity_per_fortnight": 200,  # ASM-A
+            "workers_required": 1,
+            "spaces": 1,
+            "lifespan_periods": 10,
+            "power_kw": 10
         },
-        "M2": { # M2 implied exists but case focuses on M3? Adding generic if needed.
-             "cost": 40000, # Placeholder
-             "capacity_units": 300
+        "M2": {
+            "price": 7000,
+            "capacity_per_fortnight": 70,  # ASM-B
+            "workers_required": 1,
+            "spaces": 1,
+            "lifespan_periods": 10,
+            "power_kw": 9
         },
         "M3_ALPHA": {
-            "cost": 88500,
-            "capacity_units": 450,
+            "price": 88500,
+            "capacity_per_fortnight": 450,  # ASM-C
             "workers_required": 30,
-            "type": "Semi-Auto"
+            "spaces": 5,
+            "lifespan_periods": 20,
+            "power_kw": 15
         },
         "M3_BETA": {
-            "cost": 155400,
-            "capacity_units": 600,
+            "price": 155400,
+            "capacity_per_fortnight": 600,  # ASM-C
             "workers_required": 6,
-            "type": "Automated"
+            "spaces": 6,
+            "lifespan_periods": 20,
+            "power_kw": 16
+        },
+        "M4": {
+            "price": 2500,
+            "capacity_section_3": 400,  # ASM-C
+            "capacity_section_4": 150,  # ASM-D
+            "capacity_section_5": 130,  # Electrocleans
+            "workers_required": 1,
+            "spaces": 1,
+            "lifespan_periods": 8,
+            "power_kw": 6
         }
     },
     
+    # Crew capacity (Section 5 manual assembly)
+    "CREW": {
+        "workers_per_crew": 3,
+        "capacity_per_crew": 50  # Electrocleans per fortnight
+    },
+    
+    # Machine resale value
+    "RESALE_RATE": 0.65,  # 65% of net book value
+    
+    # Table IV.7 - Facilities ("Plant Modules")
     "FACILITIES": {
-        "MODULE_COST": 25000,
-        "MODULE_CAPACITY_MACHINES": 4 # Example: 4 machines per module?
+        "MODULE_PURCHASE_PRICE": 50000,
+        "MODULE_RESALE_PRICE": 50000,
+        "MODULE_LEASING_COST": 75000,  # Emergency leasing
+        "MODULE_RENT_COST_PER_PERIOD": 7500,  # Regular rent per module per period
+        "ADMIN_COST_PER_MODULE_PER_PERIOD": 10000,
+        "SPACES_PER_MODULE": 18,
+        # Current modules at Period 7
+        "INITIAL_MODULES": {
+            "Center": 4,
+            "West": 2,
+            "North": 0,
+            "East": 0,
+            "South": 0
+        }
+    },
+    
+    # Electricity costs (Table IV.3)
+    "ELECTRICITY": {
+        "POWER_COST_PER_KW_PER_PERIOD": 10,  # $10 per installed kW per period
+        "CONSUMPTION_COST_PER_KWH": 0.06,    # $0.06 per kWh
+        "CO2_PER_KWH": 0.4                    # 0.4 kg CO2 per kWh
+    },
+    
+    # Table IV.2 - Machine Transfer Costs ($ per machine by airplane)
+    "MACHINE_TRANSFER_COSTS": {
+        "Center-West":  {"M1": 960, "M2": 840, "M3_ALPHA": 1440, "M3_BETA": 1800, "M4": 360},
+        "Center-North": {"M1": 1320, "M2": 1155, "M3_ALPHA": 1980, "M3_BETA": 2475, "M4": 495},
+        "Center-East":  {"M1": 2460, "M2": 2152.50, "M3_ALPHA": 3690, "M3_BETA": 4612.50, "M4": 922.50},
+        "Center-South": {"M1": 1200, "M2": 1050, "M3_ALPHA": 1800, "M3_BETA": 2250, "M4": 450},
+        "West-North":   {"M1": 1260, "M2": 1102.50, "M3_ALPHA": 1890, "M3_BETA": 2362.50, "M4": 472.50},
+        "West-East":    {"M1": 1440, "M2": 1260, "M3_ALPHA": 2160, "M3_BETA": 2700, "M4": 540},
+        "West-South":   {"M1": 1740, "M2": 1522.50, "M3_ALPHA": 2610, "M3_BETA": 3262.50, "M4": 652.50},
+        "North-East":   {"M1": 1740, "M2": 1522.50, "M3_ALPHA": 2610, "M3_BETA": 3262.50, "M4": 652.50},
+        "North-South":  {"M1": 2160, "M2": 1890, "M3_ALPHA": 3240, "M3_BETA": 4050, "M4": 810},
+        "East-South":   {"M1": 3480, "M2": 3045, "M3_ALPHA": 5220, "M3_BETA": 6525, "M4": 1305}
+    },
+    
+    # Table IV.1 - Initial Machine Counts per Region/Section (Period 7)
+    "INITIAL_MACHINES": {
+        "Center": {
+            "Section 1": {"M1": 7},
+            "Section 2": {"M2": 22},
+            "Section 3": {"M3_ALPHA": 3, "M3_BETA": 0, "M4": 4},
+            "Section 4": {"M4": 10},
+            "Section 5": {"M4": 11}
+        },
+        "West": {
+            "Section 1": {"M1": 3},
+            "Section 2": {"M2": 9},
+            "Section 3": {"M3_ALPHA": 1, "M3_BETA": 0, "M4": 2},
+            "Section 4": {"M4": 3},
+            "Section 5": {"M4": 3}
+        }
+    },
+    
+    # Table IV.5 - Initial Raw Materials Inventory (Period 7)
+    "INITIAL_INVENTORY": {
+        "Center": {
+            "Part A": 3496, "Part B": 765,
+            "Piece 1": 94, "Piece 2": 3844, "Piece 3": 3125,
+            "Piece 4": 6131, "Piece 5": 16736, "Piece 6": 4439,
+            "Assembly A": 7432, "Assembly B": 5392, "Assembly C": 3766, "Assembly D": 6606
+        },
+        "West": {
+            "Part A": 1016, "Part B": 293,
+            "Piece 1": 36, "Piece 2": 1424, "Piece 3": 1208,
+            "Piece 4": 2356, "Piece 5": 6456, "Piece 6": 1596,
+            "Assembly A": 3622, "Assembly B": 2210, "Assembly C": 2416, "Assembly D": 2266
+        }
     }
 }
 
@@ -141,33 +272,124 @@ PRODUCTION = {
 # 4. WORKFORCE PARAMETERS (CPO)
 # =============================================================================
 WORKFORCE = {
+    # Table III.2 - Distributor Sales Force
     "SALESFORCE": {
-        "BASE_SALARY": 750,
-        "HIRING_COST": 1000,
-        "FIRING_COST": 2000 # Estimate (usually 2-3x salary or specific policy)
+        "SALARY_PER_FORTNIGHT": 750,  # $750/fortnight -> $6000/period
+        "HIRING_COST": 1000,          # One-time setup/training
+        "LAYOFF_COST": 0,             # Per PDF: "Layoffs do not incur additional expenses"
+        "INITIAL_COUNT": 44           # Period 6 force
     },
     
+    # Table VI.1 - Factory Workers
     "PRODUCTION_WORKERS": {
-        "BASE_SALARY": 650,
-        "HIRING_COST": 1250,
-        "TRAINING_COST": 350,
-        "OVERTIME_MULTIPLIER": 1.4,
-        "OVERTIME_CAPACITY_PCT": 0.20 # Max 20% extra capacity via overtime
+        "SALARY_PER_FORTNIGHT": 27.3,  # Current salary
+        "MINIMUM_SALARY": 26.0,         # Government minimum
+        "HIRING_COST": 240,
+        "LAYOFF_COST": 220,
+        "OVERTIME_BONUS_PER_FORTNIGHT": 12,  # Flat $12/fortnight for Saturday work
+        "OVERTIME_CAPACITY_INCREASE": 0.20,   # 20% extra production
+        "INDIRECT_EXPENSE_RATE": 0.50         # 50% of salaries for foremen, QC, etc.
+    },
+    
+    # Initial worker allocation (Table VI.1)
+    "INITIAL_WORKERS": {
+        "Center": {
+            "M1": 7, "M2": 22, "M3_alpha": 90, "M4_S3": 4, "M4_S4": 10, "M4_S5": 11, "Crews": 75,
+            "Total": 219
+        },
+        "West": {
+            "M1": 3, "M2": 9, "M3_alpha": 30, "M4_S3": 2, "M4_S4": 3, "M4_S5": 3, "Crews": 21,
+            "Total": 71
+        }
     }
 }
 
 # =============================================================================
 # 5. LOGISTICS PARAMETERS (CLO)
 # =============================================================================
-# Costs per unit (Placeholder structure - specific matrix needed from case p.26)
 LOGISTICS = {
-    # Costs from Factory (Center?) to Zones
+    # Table V.1 - Warehousing
+    "WAREHOUSE": {
+        "RENTAL_COST_PER_MODULE_PER_PERIOD": 800,
+        "CAPACITY_PER_MODULE": 100,  # Electroclean units
+        # Initial capacity at Period 6
+        "INITIAL_MODULES": {
+            "Center": 48,
+            "West": 25,
+            "North": 20,
+            "East": 0,
+            "South": 0
+        }
+    },
+    
+    # Table V.3 - Transport Costs ($ per Electroclean)
+    # Format: {route: {mode: {size: cost}}}
+    # Sizes: Small (1-999), Medium (1000-1999), Large (2000+)
     "TRANSPORT_COSTS": {
-        "Center": {"Truck": 0.5, "Train": 0.3, "Plane": 2.0},
-        "West":   {"Truck": 1.2, "Train": 0.8, "Plane": 3.0},
-        "North":  {"Truck": 1.0, "Train": 0.7, "Plane": 2.5},
-        "East":   {"Truck": 1.5, "Train": 1.0, "Plane": 3.5},
-        "South":  {"Truck": 1.8, "Train": 1.2, "Plane": 4.0}
+        "Center-West": {
+            "Airplane": 19.20,
+            "Truck": {"Small": 18.00, "Medium": 16.80, "Large": 15.60},
+            "Train": {"Small": 13.20, "Medium": 12.00, "Large": 10.80}
+        },
+        "Center-North": {
+            "Airplane": 26.40,
+            "Truck": {"Small": 20.16, "Medium": 18.96, "Large": 18.48},
+            "Train": {"Small": 19.69, "Medium": 18.24, "Large": 14.40}
+        },
+        "Center-East": {
+            "Airplane": 49.20,
+            "Truck": {"Small": 47.52, "Medium": 43.52, "Large": 40.80},
+            "Train": {"Small": 46.32, "Medium": 42.00, "Large": 39.60}
+        },
+        "Center-South": {
+            "Airplane": 24.00,
+            "Truck": {"Small": 18.00, "Medium": 16.80, "Large": 16.32},
+            "Train": {"Small": 16.80, "Medium": 15.60, "Large": 12.72}
+        },
+        "West-North": {
+            "Airplane": 25.20,
+            "Truck": {"Small": 22.08, "Medium": 21.60, "Large": 18.00},
+            "Train": {"Small": 20.40, "Medium": 18.00, "Large": 16.80}
+        },
+        "West-East": {
+            "Airplane": 28.80,
+            "Truck": {"Small": 28.32, "Medium": 27.60, "Large": 26.64},
+            "Train": {"Small": 27.60, "Medium": 26.40, "Large": 24.48}
+        },
+        "West-South": {
+            "Airplane": 34.80,
+            "Truck": {"Small": 33.60, "Medium": 32.40, "Large": 31.20},
+            "Train": {"Small": 32.40, "Medium": 28.80, "Large": 24.00}
+        },
+        "North-East": {
+            "Airplane": 34.80,
+            "Truck": {"Small": 33.60, "Medium": 31.20, "Large": 28.80},
+            "Train": {"Small": 32.40, "Medium": 28.80, "Large": 24.00}
+        },
+        "North-South": {
+            "Airplane": 43.20,
+            "Truck": {"Small": 38.40, "Medium": 37.20, "Large": 36.00},
+            "Train": {"Small": 38.40, "Medium": 36.00, "Large": 28.80}
+        },
+        "East-South": {
+            "Airplane": 69.60,
+            "Truck": {"Small": 64.80, "Medium": 58.80, "Large": 57.60},
+            "Train": {"Small": 63.60, "Medium": 57.60, "Large": 56.40}
+        }
+    },
+    
+    # CO2 Emissions from Transport (Table VII.1) - kg CO2 per Electroclean
+    "TRANSPORT_CO2": {
+        "Center-West":  {"Airplane": 16.00, "Truck": {"Small": 5.00, "Medium": 4.67, "Large": 4.33}, "Train": {"Small": 1.30, "Medium": 1.18, "Large": 1.06}},
+        "Center-North": {"Airplane": 22.00, "Truck": {"Small": 5.60, "Medium": 5.27, "Large": 5.13}, "Train": {"Small": 1.94, "Medium": 1.80, "Large": 1.42}},
+        "Center-East":  {"Airplane": 41.00, "Truck": {"Small": 13.20, "Medium": 12.09, "Large": 11.33}, "Train": {"Small": 4.56, "Medium": 4.14, "Large": 3.90}},
+        "Center-South": {"Airplane": 20.00, "Truck": {"Small": 5.00, "Medium": 4.67, "Large": 4.53}, "Train": {"Small": 1.65, "Medium": 1.54, "Large": 1.25}},
+        "West-North":   {"Airplane": 21.00, "Truck": {"Small": 6.13, "Medium": 6.00, "Large": 5.00}, "Train": {"Small": 2.01, "Medium": 1.77, "Large": 1.65}},
+        "West-East":    {"Airplane": 24.00, "Truck": {"Small": 7.87, "Medium": 7.67, "Large": 7.40}, "Train": {"Small": 2.72, "Medium": 2.60, "Large": 2.41}},
+        "West-South":   {"Airplane": 29.00, "Truck": {"Small": 9.33, "Medium": 9.00, "Large": 8.67}, "Train": {"Small": 3.19, "Medium": 2.84, "Large": 2.36}},
+        "North-East":   {"Airplane": 29.00, "Truck": {"Small": 9.33, "Medium": 8.67, "Large": 8.00}, "Train": {"Small": 3.19, "Medium": 2.84, "Large": 2.36}},
+        "North-South":  {"Airplane": 36.00, "Truck": {"Small": 10.67, "Medium": 10.33, "Large": 10.00}, "Train": {"Small": 3.78, "Medium": 3.55, "Large": 2.84}},
+        "East-South":   {"Airplane": 58.00, "Truck": {"Small": 18.00, "Medium": 16.33, "Large": 16.00}, "Train": {"Small": 6.26, "Medium": 5.67, "Large": 5.55}}
     }
 }
 
@@ -175,15 +397,45 @@ LOGISTICS = {
 # 6. PURCHASING PARAMETERS (Purchasing Manager)
 # =============================================================================
 PURCHASING = {
-    "BOM_COSTS": {
-        "Part A": 15.00,  # Estimated Base Cost
-        "Part B": 25.00,  # Estimated Base Cost
-        "Piece 1": 2.00,
-        "Piece 2": 2.00,
-        "Piece 3": 2.00,
-        "Piece 4": 2.00,
-        "Piece 5": 2.00,
-        "Piece 6": 2.00
+    # Table IV.4 - Raw Materials
+    "PARTS": {
+        "Part A": {
+            "batch_size": 30,
+            "suppliers": {
+                "A": {"price": 125, "payment_fortnights": 0, "delivery_rate": 1.00},
+                "B": {"price": 100, "discount_threshold": 150, "discount": 0.16, "payment_fortnights": 2, "delivery_rate": 0.80},
+                "C": {"price": 140, "payment_fortnights": 8, "delivery_rate": 1.00}
+            },
+            "ordering_cost": 2300,
+            "holding_cost_per_unit": 0.30,
+            "consumption_per_electroclean": 1.00
+        },
+        "Part B": {
+            "batch_size": 12,
+            "suppliers": {
+                "A": {"price": 330, "payment_fortnights": 0, "delivery_rate": 1.00},
+                "B": {"price": 264, "discount_threshold": 80, "discount": 0.16, "payment_fortnights": 2, "delivery_rate": 0.80},
+                "C": {"price": 370, "payment_fortnights": 8, "delivery_rate": 1.00}
+            },
+            "ordering_cost": 6000,
+            "holding_cost_per_unit": 4.50,
+            "consumption_per_electroclean": 0.20
+        }
+    },
+    "PIECES": {
+        "Piece 1": {"batch_size": 1, "price": 60, "consumption": 0.01},
+        "Piece 2": {"batch_size": 100, "price": 7, "consumption": 8.00},
+        "Piece 3": {"batch_size": 30, "price": 36, "consumption": 0.30},
+        "Piece 4": {"batch_size": 60, "price": 24, "consumption": 0.60},
+        "Piece 5": {"batch_size": 100, "price": 30, "consumption": 2.00},
+        "Piece 6": {"batch_size": 150, "price": 28, "consumption": 0.75}
+    },
+    # Assembly holding costs
+    "ASSEMBLIES": {
+        "Assembly A": {"holding_cost": 0.20},
+        "Assembly B": {"holding_cost": 0.40},
+        "Assembly C": {"holding_cost": 0.60},
+        "Assembly D": {"holding_cost": 0.20}
     }
 }
 
@@ -191,10 +443,38 @@ PURCHASING = {
 # 7. ESG PARAMETERS (Strategy)
 # =============================================================================
 ESG = {
-    "STRATEGY": {
-        "CARBON_NEUTRAL_YEAR": 2030,
-        "RECYCLABILITY_TARGET": 1.0, # 100%
-        "FAIR_WAGE_MULTIPLIER": 1.1, # Target 10% above market
-        "COMMUNITY_INVESTMENT_PCT": 0.01 # 1% of profits
+    # Table VII.1 - CO2 from raw materials procurement (kg CO2/part)
+    "RAW_MATERIALS_CO2": {
+        "Part A": {"Supplier A": 3.67, "Supplier B": 6.18, "Supplier C": 3.58},
+        "Part B": {"Supplier A": 5.46, "Supplier B": 8.33, "Supplier C": 5.33}
+    },
+    
+    # Table VII.1 - Other emissions
+    "FACTORY_MODULE_CO2": 405000,  # kg CO2 per new module (distributed over 12 periods)
+    "ELECTROCLEAN_DISPOSAL_CO2": 13.2,  # 12 kg recycling + 1.2 kg transport
+    
+    # Table VII.2 - CO2 Abatement Actions
+    "ABATEMENT": {
+        "SOLAR_PANELS": {
+            "cost": 420,
+            "lifespan_years": 25,
+            "maintenance_per_period": 7,
+            "energy_per_period_kwh": 266,
+            "co2_reduction_per_period_kg": 106.4
+        },
+        "GREEN_ENERGY": {
+            "premium_rate": 0.20,  # 20% over regular price
+            "co2_per_kwh_reduction": 0.4
+        },
+        "TREES": {
+            "cost_per_tree": 6.25,
+            "maintenance_per_period_per_80_trees": 16.67,
+            "co2_absorbed_per_period_per_80_trees_kg": 333
+        }
+    },
+    
+    # Board targets
+    "TARGETS": {
+        "ANNUAL_CO2_REDUCTION": 0.15  # 15% year-over-year reduction required
     }
 }

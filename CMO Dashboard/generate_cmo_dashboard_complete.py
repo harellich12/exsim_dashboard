@@ -32,7 +32,7 @@ except ImportError:
     COMMON = {}  # Add missing COMMON init
     # Fallback for config
     OUTPUT_DIR = Path(__file__).parent
-    def get_data_path(f): return Path(f)
+    def get_data_path(f, **kwargs): return Path(f) if Path(f).exists() else None
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -239,6 +239,15 @@ def load_market_report(filepath):
 
 def load_innovation_features(filepath):
     """Load innovation features dynamically."""
+    if filepath is None:
+        return [
+            "STAINLESS MATERIAL", "RECYCLABLE MATERIALS", "ENERGY EFFICIENCY",
+            "LIGHTER AND MORE COMPACT", "IMPACT RESISTANCE", "NOISE REDUCTION",
+            "IMPROVED BATTERY CAPACITY", "SELF-CLEANING", "SPEED SETTINGS",
+            "DIGITAL CONTROLS", "VOICE ASSISTANCE INTEGRATION",
+            "AUTOMATION AND PROGRAMMABILITY", "MULTIFUNCTIONAL ACCESSORIES",
+            "MAPPING TECHNOLOGY"
+        ]
     df = load_excel_file(filepath, sheet_name='Innovation')
     
     features = []
@@ -266,17 +275,30 @@ def load_innovation_features(filepath):
 
 def get_innovation_cost(feature_name):
     """Get cost dict for a feature from case parameters."""
-    # Normalize name for lookup (uppercase, strip)
-    name = feature_name.upper().strip()
     costs = MARKET.get("INNOVATION_COSTS", {})
+    if not costs:
+        return {"upfront": 0, "variable": 0}
+
+    def normalize(s):
+        """Normalize string for comparison: upper, replace symbols."""
+        return s.upper().replace('-', ' ').replace('_', ' ').replace('&', 'AND').replace('  ', ' ').strip()
     
-    # Try direct match
-    if name in costs:
-        return costs[name]
+    name_norm = normalize(feature_name)
     
-    # Try partial match
+    # 1. Try Direct Key Match
+    if name_norm in costs:
+        return costs[name_norm]
+
+    # 2. Iterative Match with Normalization
     for key, val in costs.items():
-        if key in name or name in key:
+        key_norm = normalize(key)
+        
+        # Exact normalized match
+        if name_norm == key_norm:
+            return val
+            
+        # Partial match (careful with short strings, but feature names are usually distinct)
+        if name_norm in key_norm or key_norm in name_norm:
             return val
             
     return {"upfront": 0, "variable": 0}
@@ -284,18 +306,24 @@ def get_innovation_cost(feature_name):
 
 def load_marketing_template(filepath):
     """Load marketing template structure."""
-    df = load_excel_file(filepath, sheet_name='Marketing')
-    
     template = {
-        'df': df,
+        'df': None,
         'tv_budget': 0,
         'brand_focus': 0,
         'radio_budgets': {zone: 0 for zone in ZONES},
         'demand': {zone: 0 for zone in ZONES},
         'prices': {zone: 0 for zone in ZONES},
         'payment_terms': {zone: '' for zone in ZONES},
-        'salespeople': {zone: 0 for zone in ZONES}
+        'salespeople': {zone: 0 for zone in ZONES},
+        'exists': False
     }
+    
+    if filepath is None:
+        return template
+        
+    df = load_excel_file(filepath, sheet_name='Marketing')
+    template['df'] = df
+    template['exists'] = df is not None
     
     if df is not None:
         for idx, row in df.iterrows():
@@ -855,7 +883,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws2['A2'].font = Font(italic=True, color="666666")
     
     # Headers
-    innov_headers = ['Feature Name', 'Decision (1=Yes)', 'Est. Cost ($)']
+    innov_headers = ['Feature Name', 'Decision (1=Yes)', 'Est. Cost ($)', 'Cost Details']
     for col, header in enumerate(innov_headers, start=1):
         cell = ws2.cell(row=4, column=col, value=header)
         cell.font = header_font
@@ -872,42 +900,35 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         upfront = costs.get('upfront', 0)
         variable = costs.get('variable', 0)
         
+        # Column 3: Upfront Cost (Numeric)
+        cell = ws2.cell(row=row, column=3, value=upfront)
+        cell.border = thin_border
+        cell.fill = input_fill
+        cell.number_format = '$#,##0'
+
+        # Column 4: Cost Details (String)
         cost_str = f"${upfront:,.0f} + ${variable:.2f}/unit"
-        ws2.cell(row=row, column=3, value=cost_str).border = thin_border
+        cell = ws2.cell(row=row, column=4, value=cost_str)
+        cell.border = thin_border
+        cell.font = Font(italic=True, color="666666")
         
         dec_val = 0
         if decision_overrides and 'innovation' in decision_overrides:
              dec_val = decision_overrides['innovation'].get(feature, 0)
 
+        # Column 2: Decision
         cell = ws2.cell(row=row, column=2, value=dec_val)
         cell.border = thin_border
         cell.fill = input_fill
         cell.alignment = Alignment(horizontal='center')
-        
-        cell = ws2.cell(row=row, column=3, value=10000)
-        cell.border = thin_border
-        cell.fill = input_fill
-        cell.number_format = '$#,##0'
-        
-        # New "Calculated Est. Cost" column
-        cell = ws2.cell(row=row, column=4, value=f"=C{row}")
-        cell.border = thin_border
-        cell.fill = calc_fill
-        cell.number_format = '$#,##0'
-        # Add Excel Comment
-        # from openpyxl.comments import Comment
-        # cell.comment = Comment("Approximate value based on case history. Actuals may vary by +/- 10%.", "ExSim")
-        # Skipping Comment object import for simplicity, just keeping value.
         
         row += 1
     
     # Total innovation cost
     row += 1
     ws2.cell(row=row, column=1, value="TOTAL INNOVATION COST").font = Font(bold=True)
-    cell = ws2.cell(row=row, column=4, value=f'=SUMPRODUCT(B5:B{row-2},C5:C{row-2})') # Update to verify against calc cost? or input? usually input.
-    # Actually request says "Link to the static cost".
-    # Let's keep sumproduct on Input Cost (Col C) or new Col D? 
-    # Usually we pay based on the input cost we agree to, so Col C is fine.
+    
+    # Sum product of Decision (Col B) * Upfront Cost (Col C)
     cell = ws2.cell(row=row, column=3, value=f'=SUMPRODUCT(B5:B{row-2},C5:C{row-2})')
     cell.fill = calc_fill
     cell.font = Font(bold=True)
@@ -916,10 +937,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws2.column_dimensions['A'].width = 35
     ws2.column_dimensions['B'].width = 18
     ws2.column_dimensions['C'].width = 15
-    ws2.column_dimensions['D'].width = 18
-    
-    ws2.cell(row=4, column=4, value="Calculated Est. Cost").font = header_font
-    ws2.cell(row=4, column=4).fill = header_fill
+    ws2.column_dimensions['D'].width = 25
     ws2.cell(row=4, column=4).border = thin_border
     
     innov_cost_cell = f'C{row}'
@@ -998,7 +1016,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws3['A13'].font = section_font
     
     zonal_headers = ['Zone', 'Last Sales', 'Stockout?', 'Target Demand', 'Radio Spots (Qty)',
-                     'Headcount', 'Price', 'Avg Comp Price', 'Payment', 'Est. Revenue', 'Mkt Cost', 'Contribution']
+                     'Headcount', 'Price', 'Avg Comp Price', 'Payment', 'A/R Discount%', 'Est. Revenue', 'Mkt Cost', 'Contribution']
     
     for col, header in enumerate(zonal_headers, start=1):
         cell = ws3.cell(row=15, column=col, value=header)
@@ -1075,18 +1093,35 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         cell.fill = ref_fill
         cell.number_format = '$#,##0.00'
         
-        # Payment Terms
-        cell = ws3.cell(row=row, column=9, value=marketing_template['payment_terms'].get(zone, ''))
+        # Payment Terms (with data validation for A,B,C,D)
+        cell = ws3.cell(row=row, column=9, value=marketing_template['payment_terms'].get(zone, 'D'))
         cell.border = thin_border
         cell.fill = input_fill
         
-        # Est Revenue
-        cell = ws3.cell(row=row, column=10, value=f"=D{row}*G{row}")
+        # Add data validation for payment terms
+        from openpyxl.worksheet.datavalidation import DataValidation
+        dv = DataValidation(type='list', formula1='"A,B,C,D"', allow_blank=False)
+        dv.error = 'Payment term must be A, B, C, or D'
+        dv.errorTitle = 'Invalid Payment Term'
+        ws3.add_data_validation(dv)
+        dv.add(cell)
+        
+        # A/R Discount% (calculated from payment term using COMMON.PAYMENT_TERMS)
+        # Use lookup based on payment term: A=13%, B=7.5%, C=2.5%, D=0%
+        payment_terms = COMMON.get('PAYMENT_TERMS', {})
+        discount_formula = f'=IF(I{row}="A",0.13,IF(I{row}="B",0.075,IF(I{row}="C",0.025,0)))'
+        cell = ws3.cell(row=row, column=10, value=discount_formula)
+        cell.border = thin_border
+        cell.fill = calc_fill
+        cell.number_format = '0.0%'
+        
+        # Est Revenue (now column 11 instead of 10)
+        cell = ws3.cell(row=row, column=11, value=f"=D{row}*G{row}*(1-J{row})")
         cell.border = thin_border
         cell.fill = calc_fill
         cell.number_format = '$#,##0'
         
-        # Mkt Cost (Simplified formula to avoid cross-sheet issues)
+        # Mkt Cost (now column 12 instead of 11)
         # Components: TV (split evenly), Radio, Salaries, Hiring, Innovation
         # TV Cost = B9 * tv_cost_spot / 5 (split across 5 zones)
         # Radio Cost = E{row} * radio_cost_spot
@@ -1095,14 +1130,14 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         # Innovation = Total Innovation Cost / 5 (use hardcoded value from INNOVATION_LAB total)
         # Note: Simplified to avoid #VALUE! errors from cross-sheet refs that may not resolve
         prev_hc = 5  # Default previous headcount assumption
-        cell = ws3.cell(row=row, column=11, 
+        cell = ws3.cell(row=row, column=12, 
             value=f"=(C9/5) + (E{row}*{radio_cost_spot}) + (F{row}*{salary_per_person}) + (MAX(0, F{row}-{prev_hc})*{hiring_cost})")
         cell.border = thin_border
         cell.fill = calc_fill
         cell.number_format = '$#,##0'
         
-        # Contribution
-        cell = ws3.cell(row=row, column=12, value=f"=J{row}-K{row}") 
+        # Contribution (now column 13: Est Revenue - Mkt Cost = K - L)
+        cell = ws3.cell(row=row, column=13, value=f"=K{row}-L{row}") 
         cell.border = thin_border
         cell.fill = output_fill
         cell.number_format = '$#,##0'
@@ -1246,7 +1281,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         ws5.cell(row=5+i, column=1, value='A').border = thin_border
         ws5.cell(row=5+i, column=2, value=feature).border = thin_border
         # Link to INNOVATION_LAB decision
-        ws5.cell(row=5+i, column=3, value=f'=INNOVATION_LAB!B{5+i}').border = thin_border
+        ws5.cell(row=5+i, column=3, value=f"='INNOVATION LAB'!B{5+i}").border = thin_border
     
     ws5.column_dimensions['A'].width = 10
     ws5.column_dimensions['B'].width = 35

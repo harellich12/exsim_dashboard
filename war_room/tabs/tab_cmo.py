@@ -21,40 +21,45 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 try:
-    from case_parameters import COMMON
+    from case_parameters import COMMON, MARKET
     ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
     SEGMENTS = COMMON.get('SEGMENTS', ['High', 'Low'])
 except ImportError:
     ZONES = ['Center', 'West', 'North', 'East', 'South']
     SEGMENTS = ['High', 'Low']
+    MARKET = {}
 
 # Default innovation features (from Excel generator)
-DEFAULT_INNOVATION_FEATURES = [
-    "STAINLESS MATERIAL", "RECYCLABLE MATERIALS", "ENERGY EFFICIENCY",
-    "LIGHTER AND MORE COMPACT", "IMPACT RESISTANCE", "NOISE REDUCTION",
-    "IMPROVED BATTERY CAPACITY", "SELF-CLEANING", "SPEED SETTINGS",
-    "DIGITAL CONTROLS", "VOICE ASSISTANCE INTEGRATION",
-    "AUTOMATION AND PROGRAMMABILITY", "MULTIFUNCTIONAL ACCESSORIES",
-    "MAPPING TECHNOLOGY"
-]
-
-# Default costs per feature (from case_parameters.py)
-INNOVATION_COSTS = {
-    "STAINLESS MATERIAL": {"upfront": 15000, "variable": 2.50},
-    "RECYCLABLE MATERIALS": {"upfront": 12000, "variable": 1.80},
-    "ENERGY EFFICIENCY": {"upfront": 20000, "variable": 3.00},
-    "LIGHTER AND MORE COMPACT": {"upfront": 18000, "variable": 2.20},
-    "IMPACT RESISTANCE": {"upfront": 10000, "variable": 1.50},
-    "NOISE REDUCTION": {"upfront": 14000, "variable": 2.00},
-    "IMPROVED BATTERY CAPACITY": {"upfront": 25000, "variable": 4.00},
-    "SELF-CLEANING": {"upfront": 22000, "variable": 3.50},
-    "SPEED SETTINGS": {"upfront": 8000, "variable": 1.20},
-    "DIGITAL CONTROLS": {"upfront": 16000, "variable": 2.80},
-    "VOICE ASSISTANCE INTEGRATION": {"upfront": 30000, "variable": 5.00},
-    "AUTOMATION AND PROGRAMMABILITY": {"upfront": 28000, "variable": 4.50},
-    "MULTIFUNCTIONAL ACCESSORIES": {"upfront": 12000, "variable": 2.00},
-    "MAPPING TECHNOLOGY": {"upfront": 35000, "variable": 6.00},
-}
+# Use keys from case_parameters if available, otherwise fallback
+if MARKET and 'INNOVATION_COSTS' in MARKET:
+    DEFAULT_INNOVATION_FEATURES = list(MARKET['INNOVATION_COSTS'].keys())
+    INNOVATION_COSTS = MARKET['INNOVATION_COSTS']
+else:
+    DEFAULT_INNOVATION_FEATURES = [
+        "STAINLESS MATERIAL", "RECYCLABLE MATERIALS", "ENERGY EFFICIENCY",
+        "LIGHTER AND MORE COMPACT", "IMPACT RESISTANCE", "NOISE REDUCTION",
+        "IMPROVED BATTERY CAPACITY", "SELF-CLEANING", "SPEED SETTINGS",
+        "DIGITAL CONTROLS", "VOICE ASSISTANCE INTEGRATION",
+        "AUTOMATION AND PROGRAMMABILITY", "MULTIFUNCTIONAL ACCESSORIES",
+        "MAPPING TECHNOLOGY"
+    ]
+    # Fallback costs if imports fail
+    INNOVATION_COSTS = {
+        "STAINLESS MATERIAL": {"upfront": 15000, "variable": 2.50},
+        "RECYCLABLE MATERIALS": {"upfront": 12000, "variable": 1.80},
+        "ENERGY EFFICIENCY": {"upfront": 20000, "variable": 3.00},
+        "LIGHTER AND MORE COMPACT": {"upfront": 18000, "variable": 2.20},
+        "IMPACT RESISTANCE": {"upfront": 10000, "variable": 1.50},
+        "NOISE REDUCTION": {"upfront": 14000, "variable": 2.00},
+        "IMPROVED BATTERY CAPACITY": {"upfront": 25000, "variable": 4.00},
+        "SELF-CLEANING": {"upfront": 22000, "variable": 3.50},
+        "SPEED SETTINGS": {"upfront": 8000, "variable": 1.20},
+        "DIGITAL CONTROLS": {"upfront": 16000, "variable": 2.80},
+        "VOICE ASSISTANCE INTEGRATION": {"upfront": 30000, "variable": 5.00},
+        "AUTOMATION AND PROGRAMMABILITY": {"upfront": 28000, "variable": 4.50},
+        "MULTIFUNCTIONAL ACCESSORIES": {"upfront": 12000, "variable": 2.00},
+        "MAPPING TECHNOLOGY": {"upfront": 35000, "variable": 6.00},
+    }
 
 
 def init_cmo_state():
@@ -835,3 +840,40 @@ def render_cmo_tab():
         
     with subtabs[5]:
         render_cross_reference()
+    
+    # ---------------------------------------------------------
+    # EXSIM SHARED OUTPUTS - EXPORT
+    # ---------------------------------------------------------
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate final outputs for export
+        economics = get_economics()
+        strategy_df = get_state('cmo_strategy_inputs')
+        if strategy_df is None:
+            init_cmo_state()
+            strategy_df = get_state('cmo_strategy_inputs')
+            
+        tv_spots = st.session_state.get('cmo_tv_spots', 10)
+        
+        innovation_cost = sum(
+            data['upfront_cost'] * data['decision']
+            for data in get_state('cmo_innovation_decisions').values()
+        )
+        
+        output_df = calculate_marketing_outputs(strategy_df, tv_spots, economics, innovation_cost)
+        
+        # Prepare Export Data
+        outputs = {
+            'demand_forecast': dict(zip(strategy_df['Zone'], strategy_df['Target_Demand'])),
+            'marketing_spend': output_df['Mkt_Cost'].sum(),
+            'pricing': dict(zip(strategy_df['Zone'], strategy_df['Price'])),
+            'innovation_costs': innovation_cost
+        }
+        
+        export_dashboard_data('CMO', outputs)
+        # st.toast("✅ CMO Data Exported to Shared Outputs")
+        
+    except Exception as e:
+        print(f"Shared Output Export Error: {e}")
+

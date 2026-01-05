@@ -29,7 +29,7 @@ except ImportError:
     COMMON = {}
     # Fallback for config
     OUTPUT_DIR = Path(__file__).parent
-    def get_data_path(f): return Path(f)
+    def get_data_path(f, **kwargs): return Path(f) if Path(f).exists() else None
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -199,6 +199,8 @@ def load_production_costs(filepath):
 
 def load_procurement_template(filepath):
     """Load procurement template structure."""
+    if filepath is None:
+        return {'df': None, 'exists': False}
     df = load_excel_file(filepath, sheet_name='Procurement')
     return {'df': df, 'exists': df is not None}
 
@@ -408,12 +410,12 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
         
     row = 24
     # Analyze Parts (Average of Suppliers in Config)
-    # Ref: SUPPLIER_CONFIG!D6:D8 (Part A), D9:D11 (Part B)
+    # Ref: 'SUPPLIER CONFIG'!D6:D8 (Part A), D9:D11 (Part B)
     # Hardcoded ranges for simplicity based on default layout
     
     # Part A
     ws2.cell(row=row, column=1, value="Part A").border = thin_border
-    ws2.cell(row=row, column=2, value="=AVERAGE(SUPPLIER_CONFIG!D6:D8)").number_format = '$#,##0.00'
+    ws2.cell(row=row, column=2, value="=AVERAGE('SUPPLIER CONFIG'!D6:D8)").number_format = '$#,##0.00'
     ws2.cell(row=row, column=2).border = thin_border
     ws2.cell(row=row, column=3, value=BOM.get('Part A', 15)).number_format = '$#,##0.00' # Target
     ws2.cell(row=row, column=3).border = thin_border
@@ -425,7 +427,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     
     # Part B
     ws2.cell(row=row, column=1, value="Part B").border = thin_border
-    ws2.cell(row=row, column=2, value="=AVERAGE(SUPPLIER_CONFIG!D9:D11)").number_format = '$#,##0.00'
+    ws2.cell(row=row, column=2, value="=AVERAGE('SUPPLIER CONFIG'!D9:D11)").number_format = '$#,##0.00'
     ws2.cell(row=row, column=2).border = thin_border
     ws2.cell(row=row, column=3, value=BOM.get('Part B', 25)).number_format = '$#,##0.00'
     ws2.cell(row=row, column=3).border = thin_border
@@ -672,17 +674,17 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
         ws4.cell(row=row, column=1, value=supplier_name).border = thin_border
         
         # Calculate sum of orders for this supplier across Part A and Part B
-        # Link to MRP_ENGINE!{Col}{Row}
+        # Link to 'MRP ENGINE'!{Col}{Row}
         # Ref: order_rows[part][supplier_name]
         
         for fn in FORTNIGHTS:
             col_letter = get_column_letter(1+fn)
-            # Formula: =SUM(MRP_ENGINE!{col}{PartA_Row}, MRP_ENGINE!{col}{PartB_Row})
+            # Formula: =SUM('MRP ENGINE'!{col}{PartA_Row}, 'MRP ENGINE'!{col}{PartB_Row})
             refs = []
             for part in PARTS:
                 r = order_rows.get(part, {}).get(supplier_name)
                 if r:
-                    refs.append(f"MRP_ENGINE!{col_letter}{r}")
+                    refs.append(f"'MRP ENGINE'!{col_letter}{r}")
             
             formula = "=" + "+".join(refs) if refs else "=0"
             cell = ws4.cell(row=row, column=1+fn, value=formula)
@@ -808,7 +810,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
                     mrp_row = order_rows.get(part, {}).get(supplier, 0)
                     for fn in FORTNIGHTS:
                         if mrp_row:
-                            cell = ws5.cell(row=row, column=3+fn, value=f"=MRP_ENGINE!{get_column_letter(1+fn)}{mrp_row}")
+                            cell = ws5.cell(row=row, column=3+fn, value=f"='MRP ENGINE'!{get_column_letter(1+fn)}{mrp_row}")
                         else:
                             cell = ws5.cell(row=row, column=3+fn, value=0)
                         cell.border = thin_border

@@ -31,7 +31,7 @@ except ImportError:
     COMMON = {}
     # Fallback for config
     OUTPUT_DIR = Path(__file__).parent
-    def get_data_path(f): return Path(f)
+    def get_data_path(f, **kwargs): return Path(f) if Path(f).exists() else None
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -735,12 +735,12 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     
     # Cost rows
     cost_items = [
-        ("Total Planned Headcount", f"=WORKFORCE_PLANNING!C{totals_row}", False),
+        ("Total Planned Headcount", f"='WORKFORCE PLANNING'!C{totals_row}", False),
         ("Base Salaries", f"=B9*AVERAGE(COMPENSATION_STRATEGY!D{salary_start_row}:D{salary_end_row})*8", True),
         ("Overtime & Bonuses", f"=0", True), # Placeholder for future
         ("Training & Benefits", f"=COMPENSATION_STRATEGY!B{benefits_start_row}*C10 + COMPENSATION_STRATEGY!B{benefits_start_row+1}*C10", True),
         ("Profit Sharing", f"=$B$4*COMPENSATION_STRATEGY!B{benefits_start_row+2}", True),
-        ("Hiring & Firing", f"=WORKFORCE_PLANNING!K{totals_row}", True),
+        ("Hiring & Firing", f"='WORKFORCE PLANNING'!K{totals_row}", True),
         # NEW: Salesforce Payroll (Fixed) - Updated Logic
         ("Factory Payroll Subtotal", f"=SUM(C9:C{row+5})", True), # Subtotal for factory
     ]
@@ -769,7 +769,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     
     # 1. Headcount
     ws3.cell(row=row, column=1, value="Total Planned Factory Headcount").border = thin_border
-    ws3.cell(row=row, column=2, value=f"=WORKFORCE_PLANNING!C{totals_row}").fill = ref_fill
+    ws3.cell(row=row, column=2, value=f"='WORKFORCE PLANNING'!C{totals_row}").fill = ref_fill
     ws3.cell(row=row, column=2).border = thin_border
     ws3.cell(row=row, column=3, value=f"=B{row}").fill = calc_fill # Just repeat number or calculate cost? Item says "Headcount" so just number.
     ws3.cell(row=row, column=3).border = thin_border
@@ -866,7 +866,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     
     # 6. Hiring & Firing
     ws3.cell(row=row, column=1, value="Hiring & Firing").border = thin_border
-    ws3.cell(row=row, column=2, value=f"=WORKFORCE_PLANNING!K{totals_row}").fill = ref_fill
+    ws3.cell(row=row, column=2, value=f"='WORKFORCE PLANNING'!K{totals_row}").fill = ref_fill
     ws3.cell(row=row, column=2).border = thin_border
     ws3.cell(row=row, column=2).number_format = '$#,##0'
     ws3.cell(row=row, column=3, value=f"=B{row}").fill = calc_fill
