@@ -693,6 +693,22 @@ def render_cross_reference():
         material = purch_data.get('supplier_spend', 0)
         logistics = clo_data.get('logistics_costs', 0)
         
+        # Ensure safely converted floats
+        try:
+            labor = float(labor)
+        except (ValueError, TypeError):
+            labor = 0.0
+            
+        try:
+            material = float(material)
+        except (ValueError, TypeError):
+            material = 0.0
+            
+        try:
+            logistics = float(logistics)
+        except (ValueError, TypeError):
+            logistics = 0.0
+        
         total_variable = labor + material + logistics
         
         # DataFrame for breakdown
