@@ -18,12 +18,24 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
+# Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import ESG as ESG_PARAMS
+    from case_parameters import ESG as ESG_PARAMS, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     ESG_PARAMS = {}
+    COMMON = {}
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -38,23 +50,7 @@ REQUIRED_FILES = [
     'ESG Decision.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
-
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "ESG_Dashboard.xlsx"
+OUTPUT_FILE = OUTPUT_DIR / "ESG_Dashboard.xlsx"
 
 # Default initiative specifications
 DEFAULT_INITIATIVES = {
@@ -169,7 +165,7 @@ def load_production_data(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_esg_dashboard(esg_data, production_data):
+def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision_overrides=None):
     """Create the ESG Dashboard using openpyxl."""
     
     wb = Workbook()
@@ -201,7 +197,7 @@ def create_esg_dashboard(esg_data, production_data):
     # TAB 1: IMPACT_CONFIG
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "IMPACT_CONFIG"
+    ws1.title = "IMPACT CONFIG"
     
     ws1['A1'] = "IMPACT CONFIGURATION - Initiative Specifications"
     ws1['A1'].font = title_font
@@ -273,7 +269,7 @@ def create_esg_dashboard(esg_data, production_data):
     # =========================================================================
     # TAB 2: STRATEGY_SELECTOR
     # =========================================================================
-    ws2 = wb.create_sheet("STRATEGY_SELECTOR")
+    ws2 = wb.create_sheet("STRATEGY SELECTOR")
     
     ws2['A1'] = "STRATEGY SELECTOR - CO2 Abatement Calculator"
     ws2['A1'].font = title_font
@@ -334,12 +330,16 @@ def create_esg_dashboard(esg_data, production_data):
         cell.border = thin_border
         
         # Quantity (input)
+        qty = 0
+        if decision_overrides and name in decision_overrides:
+             qty = decision_overrides[name]
+             
         if name == "Green Electricity":
             # Percentage input for green electricity
-            cell = ws2.cell(row=row, column=2, value=0)  # 0%
+            cell = ws2.cell(row=row, column=2, value=qty)  # 0%
             cell.number_format = '0%'
         else:
-            cell = ws2.cell(row=row, column=2, value=0)
+            cell = ws2.cell(row=row, column=2, value=qty)
         cell.fill = input_fill
         cell.border = thin_border
         
@@ -584,7 +584,7 @@ def create_esg_dashboard(esg_data, production_data):
     # =========================================================================
     # TAB 3: UPLOAD_READY_ESG
     # =========================================================================
-    ws3 = wb.create_sheet("UPLOAD_READY_ESG")
+    ws3 = wb.create_sheet("UPLOAD READY ESG")
     
     ws3['A1'] = "UPLOAD READY DATA - DO NOT EDIT"
     ws3['A1'].font = Font(bold=True, color="FF0000")
@@ -625,9 +625,75 @@ def create_esg_dashboard(esg_data, production_data):
     ws3.column_dimensions['D'].width = 15
     ws3.column_dimensions['E'].width = 15
 
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    ws3.column_dimensions['E'].width = 15
+
+    # =========================================================================
+    # TAB 5: CROSS_REFERENCE (Upstream Data)
+    # =========================================================================
+    ws5 = wb.create_sheet("CROSS REFERENCE")
+    
+    ws5['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
+    ws5['A1'].font = Font(bold=True, size=14, color="2F5496")
+    ws5['A2'] = "Key metrics from Production and Logistics."
+    ws5['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        clo_data = import_dashboard_data('CLO') or {}
+    except ImportError:
+        prod_data = {}
+        clo_data = {}
+    
+    row = 4
+    
+    # Production Section
+    ws5.cell(row=row, column=1, value="Production (Output)").font = Font(bold=True, size=12, color="2F5496")
+    ws5.cell(row=row, column=1).fill = PatternFill(start_color="1565C0", end_color="1565C0", fill_type="solid") # Blue
+    ws5.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    prod_metrics = [
+        ("Total Production", f"{sum([d.get('Target',0) for d in prod_data.get('production_plan', {}).values()]) if prod_data and 'production_plan' in prod_data else 'N/A'}"),
+        ("Avg Utilization", f"{prod_data.get('capacity_utilization', {}).get('mean', 0)*100:.1f}%" if prod_data else "N/A"),
+    ]
+    
+    for label, value in prod_metrics:
+        ws5.cell(row=row, column=1, value=label).border = thin_border
+        ws5.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+        
+    row += 2
+    
+    # CLO Section
+    ws5.cell(row=row, column=1, value="Logistics (Transport)").font = Font(bold=True, size=12, color="2F5496")
+    ws5.cell(row=row, column=1).fill = PatternFill(start_color="EF6C00", end_color="EF6C00", fill_type="solid") # Orange
+    ws5.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    clo_metrics = [
+        ("Logistics Costs", f"${clo_data.get('logistics_costs', 0):,.0f}" if clo_data else "N/A"),
+        ("Shipping Volume", "See CLO Dashboard"),
+    ]
+    
+    for label, value in clo_metrics:
+        ws5.cell(row=row, column=1, value=label).border = thin_border
+        ws5.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+
+    # Formatting
+    for col in ['A', 'B']:
+        ws5.column_dimensions[col].width = 30
+
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
 def main():
@@ -636,8 +702,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # ESG Report
     esg_path = get_data_path("esg_report.xlsx")
@@ -664,6 +731,14 @@ def main():
     print("\nSheets created:")
     print("  * IMPACT_CONFIG (Initiative Specs)")
     print("  * STRATEGY_SELECTOR (ROI Calculator & Abatement Curve)")
+    
+    # Export key metrics for downstream dashboards
+    if export_dashboard_data:
+        export_dashboard_data('ESG', {
+            'co2_emissions': esg_data.get('emissions', 0),
+            'abatement_investment': 0,  # Calculated from dashboard inputs
+            'tax_liability': esg_data.get('tax_paid', 0)
+        })
 
 
 if __name__ == "__main__":

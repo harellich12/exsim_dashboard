@@ -16,9 +16,17 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state
 
-# Constants
-ZONES = ['Center', 'West', 'North', 'East', 'South']
-SEGMENTS = ['High', 'Low']
+# Import centralized constants from case_parameters
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import COMMON
+    ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
+    SEGMENTS = COMMON.get('SEGMENTS', ['High', 'Low'])
+except ImportError:
+    ZONES = ['Center', 'West', 'North', 'East', 'South']
+    SEGMENTS = ['High', 'Low']
 
 # Default innovation features (from Excel generator)
 DEFAULT_INNOVATION_FEATURES = [
@@ -98,7 +106,8 @@ def sync_from_market_data():
         return
     
     market_data = get_state('market_data')
-    sales_data = get_state('sales_data')
+    # FIX: Bulk upload stores as 'sales_admin_data', not 'sales_data'
+    sales_data = get_state('sales_admin_data')
     finished_goods_data = get_state('finished_goods_data')
     
     for idx, zone in enumerate(ZONES):
@@ -651,8 +660,28 @@ def render_upload_ready_marketing():
     
     # Download button
     st.markdown("---")
-    if st.button("📋 Copy All to Clipboard", type="primary", width='stretch'):
-        st.success("✅ Data copied! Paste into ExSim Marketing form.")
+    # CSV download button
+    import io
+    output = io.StringIO()
+    output.write("=== MARKETING CAMPAIGNS ===\n")
+    pd.DataFrame(campaigns_data).to_csv(output, index=False)
+    output.write("\n=== DEMAND ===\n")
+    demand_df.to_csv(output, index=False)
+    output.write("\n=== PRICING ===\n")
+    pricing_df.to_csv(output, index=False)
+    output.write("\n=== CHANNELS ===\n")
+    channels_df.to_csv(output, index=False)
+    csv_data = output.getvalue()
+    
+    st.download_button(
+        label="📥 Download Marketing Decisions as CSV",
+        data=csv_data,
+        file_name="marketing_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        use_container_width=True,
+        key='cmo_mkt_csv_download'
+    )
 
 
 def render_upload_ready_innovation():
@@ -681,23 +710,89 @@ def render_upload_ready_innovation():
         export_df = pd.DataFrame(export_data)
         st.dataframe(export_df, width='stretch', hide_index=True)
         
-        st.markdown("---")
-        if st.button("📋 Copy Innovation Decisions", type="primary", width='stretch'):
-            st.success("✅ Data copied! Paste into ExSim Innovation form.")
+        csv_data = export_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Innovation Decisions as CSV",
+            data=csv_data,
+            file_name="innovation_decisions.csv",
+            mime="text/csv",
+            type="primary",
+            use_container_width=True,
+            key='cmo_innov_csv_download'
+        )
+
+
+def render_cross_reference():
+    """Render CROSS_REFERENCE sub-tab - Upstream data visibility."""
+    st.subheader("🔗 CROSS REFERENCE - Upstream Support")
+    st.caption("Live visibility into Production capacity and Finance budget.")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        cfo_data = import_dashboard_data('CFO') or {}
+    except ImportError:
+        st.error("Could not load shared_outputs module")
+        prod_data = {}
+        cfo_data = {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🏭 Production (Capacity)")
+        st.info("How much can we actually sell?")
+        
+        # Extract Production Plan Target Sum
+        try:
+            prod_plan = prod_data.get('production_plan', {})
+            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            utilization = prod_data.get('capacity_utilization', {}).get('mean', 0)
+        except:
+            total_target = 0
+            utilization = 0
+            
+        st.metric("Total Production Planned", f"{total_target:,.0f} units")
+        st.metric("Factory Utilization", f"{utilization*100:.1f}%")
+
+    with col2:
+        st.markdown("### 💰 Finance (Budget)")
+        st.info("Do we have cash for campaigns?")
+        
+        liquidity = cfo_data.get('liquidity_status', 'Unknown')
+        
+        st.metric("Liquidity Status", liquidity)
+        
+        if "CRITICAL" in liquidity:
+            st.error(f"🔴 {liquidity} - Cut Spending!")
+        elif "Stable" in liquidity:
+            st.success(f"🟢 {liquidity} - Budget Safe")
+        else:
+            st.info(f"ℹ️ {liquidity}")
 
 
 def render_cmo_tab():
     """Render the CMO (Marketing) tab with 5 Excel-aligned subtabs."""
     init_cmo_state()
     
-    st.header("📢 CMO Dashboard - Marketing Strategy")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("📢 CMO Dashboard - Marketing Strategy")
+    with col_download:
+        try:
+            from utils.report_bridge import create_download_button
+            create_download_button('CMO', 'Marketing')
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Always sync data from all available sources
     sync_from_market_data()
     
     # Show data source status
     market_data = get_state('market_data')
-    sales_data = get_state('sales_data')
+    # FIX: Bulk upload stores as 'sales_admin_data', not 'sales_data'
+    sales_data = get_state('sales_admin_data')
     finished_goods_data = get_state('finished_goods_data')
     
     data_status = []
@@ -713,13 +808,14 @@ def render_cmo_tab():
     else:
         st.info("💡 Upload Market Report, Sales Admin Expenses, and Finished Goods in sidebar to populate data")
     
-    # 5 SUBTABS - Matching Excel sheets exactly
+    # 6 SUBTABS (Updated)
     subtabs = st.tabs([
         "📊 Segment Pulse",
         "🔬 Innovation Lab", 
         "🎯 Strategy Cockpit",
         "📤 Upload Marketing",
-        "📤 Upload Innovation"
+        "📤 Upload Innovation",
+        "🔗 Cross Reference"
     ])
     
     with subtabs[0]:
@@ -736,3 +832,6 @@ def render_cmo_tab():
     
     with subtabs[4]:
         render_upload_ready_innovation()
+        
+    with subtabs[5]:
+        render_cross_reference()

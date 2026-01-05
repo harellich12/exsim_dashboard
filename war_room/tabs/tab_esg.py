@@ -335,15 +335,85 @@ def render_upload_ready_esg():
     
     st.metric("Projected Remaining Tax", f"${impact['tax_liability']:,.0f}")
     
-    if st.button("📋 Copy ESG Decisions", type="primary", key='esg_copy'):
-        st.success("✅ Data copied! Paste into ExSim ESG form.")
+    # CSV download button
+    if decisions:
+        export_df = pd.DataFrame(decisions)
+        csv_data = export_df.to_csv(index=False)
+        st.download_button(
+            label="📥 Download Decisions as CSV",
+            data=csv_data,
+            file_name="esg_decisions.csv",
+            mime="text/csv",
+            type="primary",
+            key='esg_csv_download'
+        )
+    else:
+        st.caption("No decisions to download")
+
+
+def render_cross_reference():
+    """Render CROSS_REFERENCE sub-tab - Upstream data visibility."""
+    st.subheader("🔗 CROSS REFERENCE - Upstream Support")
+    st.caption("Live visibility into Production impact and Logistics miles.")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        clo_data = import_dashboard_data('CLO') or {}
+    except ImportError:
+        st.error("Could not load shared_outputs module")
+        prod_data = {}
+        clo_data = {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 🏭 Production (Output)")
+        st.info("Higher output = Higher Energy Consumption.")
+        
+        # Extract Production Plan Target Sum
+        try:
+            prod_plan = prod_data.get('production_plan', {})
+            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            utilization = prod_data.get('capacity_utilization', {}).get('mean', 0)
+        except:
+            total_target = 0
+            utilization = 0
+            
+        st.metric("Total Production", f"{total_target:,.0f} units")
+        st.metric("Avg Utilization", f"{utilization*100:.1f}%")
+
+    with col2:
+        st.markdown("### 🚚 Logistics (Scope 3)")
+        st.info("Shipping Volume drives Carbon Footprint.")
+        
+        logistics_cost = clo_data.get('logistics_costs', 0)
+        
+        st.metric("Logistics Cost Proxy", f"${logistics_cost:,.0f}")
+        
+        if logistics_cost > 100000:
+            st.warning("⚠️ High Logistics Activity - Check Scope 3 Emissions")
+        elif logistics_cost > 0:
+            st.info("ℹ️ Moderate Logistics Activity")
+        else:
+            st.caption("No logistics data")
 
 
 def render_esg_tab():
     """Render the ESG tab with 4 Excel-aligned subtabs."""
     init_esg_state()
     
-    st.header("🌿 ESG Dashboard - Sustainability & CO2 Abatement")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("🌿 ESG Dashboard - Sustainability & CO2 Abatement")
+    with col_download:
+        try:
+            from utils.report_bridge import create_download_button
+            create_download_button('ESG', 'ESG')
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Quick summary
     impact = calculate_esg_impact()
@@ -358,12 +428,13 @@ def render_esg_tab():
     with col4:
         st.metric("Tax Liability", f"${impact['tax_liability']:,.0f}")
     
-    # 4 SUBTABS
+    # 5 SUBTABS (Updated)
     subtabs = st.tabs([
         "⚙️ Impact Config",
         "🌱 Strategy Selector",
         "📊 Results",
-        "📤 Upload Ready"
+        "📤 Upload Ready",
+        "🔗 Cross Reference"
     ])
     
     with subtabs[0]:
@@ -377,3 +448,6 @@ def render_esg_tab():
     
     with subtabs[3]:
         render_upload_ready_esg()
+        
+    with subtabs[4]:
+        render_cross_reference()

@@ -14,9 +14,17 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state
 
-# Constants
-ZONES = ['Center', 'West', 'North', 'East', 'South']
-FORTNIGHTS = list(range(1, 9))
+# Import centralized constants from case_parameters
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import COMMON
+    ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
+    FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+except ImportError:
+    ZONES = ['Center', 'West', 'North', 'East', 'South']
+    FORTNIGHTS = list(range(1, 9))
 
 # Zone Colors
 ZONE_COLORS = {
@@ -390,8 +398,20 @@ def render_upload_ready_production():
     with col3:
         st.metric("Modules to Buy", total_modules)
     
-    if st.button("📋 Copy Production Decisions", type="primary", key='prod_copy'):
-        st.success("✅ Data copied! Paste into ExSim Production form.")
+    # CSV download button
+    zones_df = st.session_state.production_zones
+    target_cols = ['Zone'] + [f'Target_FN{fn}' for fn in FORTNIGHTS]
+    export_df = zones_df[target_cols].copy()
+    csv_data = export_df.to_csv(index=False)
+    
+    st.download_button(
+        label="📥 Download Decisions as CSV",
+        data=csv_data,
+        file_name="production_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        key='prod_csv_download'
+    )
 
 
 def render_production_tab():
@@ -399,7 +419,16 @@ def render_production_tab():
     init_production_state()
     sync_from_uploads()
     
-    st.header("🏭 Production Dashboard - Zone-Specific Capacity")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("🏭 Production Dashboard - Zone-Specific Capacity")
+    with col_download:
+        try:
+            from utils.report_bridge import create_download_button
+            create_download_button('Production', 'Production')
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Data status
     prod_data = get_state('production_data')

@@ -18,12 +18,24 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
-    from case_parameters import LOGISTICS
+    from case_parameters import LOGISTICS, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     LOGISTICS = {}
+    COMMON = {}
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -38,27 +50,12 @@ REQUIRED_FILES = [
     'shipping_costs.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+OUTPUT_FILE = OUTPUT_DIR / "Logistics_Dashboard.xlsx"
 
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "Logistics_Dashboard.xlsx"
-
-FORTNIGHTS = list(range(1, 9))  # 1-8
-ZONES = ["Center", "West", "North", "East", "South"]
-TRANSPORT_MODES = ["Train", "Truck", "Plane"]
+# Use centralized constants from case_parameters
+FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
+TRANSPORT_MODES = COMMON.get('TRANSPORT_MODES', ["Train", "Truck", "Plane"])
 DEFAULT_MATERIAL = "Electroclean"
 
 # Default transport configuration
@@ -102,7 +99,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 
@@ -259,12 +256,35 @@ def load_logistics_intelligence(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_logistics_dashboard(inventory_data, template_data, cost_data, intelligence_data=None):
-    """Create the Logistics Dashboard with Historical Intelligence."""
+def create_logistics_dashboard(inventory_data, template_data, cost_data, intelligence_data=None, output_buffer=None):
+    """
+    Create the Logistics Dashboard with Historical Intelligence.
+    
+    Args:
+        inventory_data: Inventory data by zone
+        template_data: Template configuration
+        cost_data: Shipping cost data
+        intelligence_data: Historical intelligence data (optional)
+        output_buffer: io.BytesIO buffer for output (optional). If provided, returns
+                      the buffer instead of saving to disk.
+    
+    Returns:
+        BytesIO buffer if output_buffer provided, None otherwise
+    """
     
     # Handle missing intelligence data
     if intelligence_data is None:
         intelligence_data = {'benchmarks': {}, 'penalties': {}}
+    
+    # Import shared outputs
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production')
+        cmo_data = import_dashboard_data('CMO')
+    except ImportError:
+        prod_data = None
+        cmo_data = None
+
     
     wb = Workbook()
     
@@ -303,7 +323,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # TAB 1: ROUTE_CONFIG
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "ROUTE_CONFIG"
+    ws1.title = "ROUTE CONFIG"
     
     ws1['A1'] = "ROUTE CONFIGURATION - Transport Physics"
     ws1['A1'].font = title_font
@@ -384,7 +404,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 1.5: LOGISTICS_DATA (Hidden Database)
     # =========================================================================
-    ws_data = wb.create_sheet("LOGISTICS_DATA")
+    ws_data = wb.create_sheet("LOGISTICS DATA")
     # Hidden? ws_data.sheet_state = 'hidden' # Keeping visible for verification
     
     ws_data['A1'] = "Route Cost Database (Generated from Case Parameters)"
@@ -442,7 +462,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 1.6: ROUTE_OPTIMIZER
     # =========================================================================
-    ws_opt = wb.create_sheet("ROUTE_OPTIMIZER")
+    ws_opt = wb.create_sheet("ROUTE OPTIMIZER")
     ws_opt['A1'] = "ROUTE OPTIMIZER & MATRIX"
     ws_opt['A1'].font = title_font
     
@@ -535,7 +555,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 2: INVENTORY_TETRIS
     # =========================================================================
-    ws2 = wb.create_sheet("INVENTORY_TETRIS")
+    ws2 = wb.create_sheet("INVENTORY TETRIS")
     
     ws2['A1'] = "INVENTORY TETRIS - Zone-by-Zone Balance"
     ws2['A1'].font = title_font
@@ -602,12 +622,17 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
             ws2.cell(row=row, column=1, value=f"FN{fn}").border = thin_border
             
             # Production (input from Production Dashboard)
-            cell = ws2.cell(row=row, column=2, value=0)
+            # Link to CROSS REFERENCE
+            # XRef Layout: Row 6=Center, 7=West, etc.
+            # Production is Col 2 in XRef
+            xref_row = 6 + ZONES.index(zone)
+            cell = ws2.cell(row=row, column=2, value=f"='CROSS REFERENCE'!B{xref_row}")
             cell.border = thin_border
             cell.fill = input_fill
             
             # Sales Forecast (input from Marketing Dashboard)
-            cell = ws2.cell(row=row, column=3, value=0)
+            # Sales is Col 3 in XRef
+            cell = ws2.cell(row=row, column=3, value=f"='CROSS REFERENCE'!C{xref_row}")
             cell.border = thin_border
             cell.fill = input_fill
             
@@ -772,7 +797,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 3: SHIPMENT_BUILDER
     # =========================================================================
-    ws3 = wb.create_sheet("SHIPMENT_BUILDER")
+    ws3 = wb.create_sheet("SHIPMENT BUILDER")
     
     ws3['A1'] = "SHIPMENT BUILDER - Plan Your Transfers"
     ws3['A1'].font = title_font
@@ -891,9 +916,43 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
         ws3.cell(row=27, column=1, value=f"⚠️ Red cells = Cost >20% above avg benchmark (${avg_benchmark:.2f} avg)").font = Font(italic=True, color="9C0006")
     
     # =========================================================================
-    # TAB 4: UPLOAD_READY_LOGISTICS
+    # TAB 4: CROSS_REFERENCE
     # =========================================================================
-    ws4 = wb.create_sheet("UPLOAD_READY_LOGISTICS")
+    ws_xref = wb.create_sheet("CROSS REFERENCE")
+    ws_xref['A1'] = "CROSS-REFERENCE SUMMARY"
+    ws_xref['A1'].font = title_font
+    
+    row = 4
+    ws_xref.cell(row=row, column=1, value="Zone").font = header_font
+    ws_xref.cell(row=row, column=1).fill = header_fill
+    ws_xref.cell(row=row, column=2, value="Production Plan").font = header_font
+    ws_xref.cell(row=row, column=2).fill = header_fill
+    ws_xref.cell(row=row, column=3, value="Sales Forecast").font = header_font
+    ws_xref.cell(row=row, column=3).fill = header_fill
+    row += 2
+    
+    # Fill Data for Zones (Rows 6-10)
+    for zone in ZONES:
+        ws_xref.cell(row=row, column=1, value=zone).border = thin_border
+        
+        # Production
+        p_val = 0
+        if prod_data and 'production_plan' in prod_data:
+            p_val = prod_data['production_plan'].get(zone, {}).get('Target', 0)
+        ws_xref.cell(row=row, column=2, value=p_val).border = thin_border
+        
+        # Sales (CMO Demand)
+        s_val = 0
+        if cmo_data and 'demand_forecast' in cmo_data:
+            s_val = cmo_data['demand_forecast'].get(zone, 0)
+        ws_xref.cell(row=row, column=3, value=s_val).border = thin_border
+        
+        row += 1
+
+    # =========================================================================
+    # TAB 5: UPLOAD_READY_LOGISTICS
+    # =========================================================================
+    ws4 = wb.create_sheet("UPLOAD READY LOGISTICS")
     
     ws4['A1'] = "LOGISTICS DECISIONS - ExSim Upload Format"
     ws4['A1'].font = title_font
@@ -947,9 +1006,15 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
             
         row += 1
 
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        return output_buffer
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+        return None
 
 
 def main():
@@ -958,8 +1023,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # Finished Goods Inventory
     inv_path = get_data_path("finished_goods_inventory.xlsx")
@@ -1010,6 +1076,23 @@ def main():
     print("  * INVENTORY_TETRIS (Zone Balancing & Stockout Checks)")
     print("  * SHIPMENT_BUILDER (Transfer Planning + Cost Benchmarks)")
     print("  * UPLOAD_READY_LOGISTICS (ExSim Format)")
+    print("  * CROSS_REFERENCE (Upstream Data)") # Added this line to reflect the new tab
+    
+    # Export key metrics for downstream dashboards
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Assuming total_logistics_cost is calculated somewhere or derived from cost_data
+        # For now, using cost_data.get('total_shipping_cost', 0) as a placeholder
+        total_logistics_cost = cost_data.get('total_shipping_cost', 0) 
+
+        export_dashboard_data('CLO', {
+            'shipping_schedule': "See Shipment Builder",
+            'logistics_costs': total_logistics_cost,
+            'inventory_by_zone': "See Inventory Tetris"
+        })
+    except ImportError:
+        print("Warning: shared_outputs not found, skipping export")
 
 
 if __name__ == "__main__":

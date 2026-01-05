@@ -8,7 +8,7 @@ A comprehensive collection of decision-support dashboards for the ExSim business
 
 **Function:** Calculates "True Demand" (adjusting for previous stockouts), optimizes the 4Ps for High/Low segments, and manages Innovation/R&D to ensure the market allocation engine chooses you.
 
-### 2. [Production Dashboard](Produciton%20Manager%20Dashboard/README.md) (Capacity & Cost Optimization)
+### 2. [Production Dashboard](Production%20Manager%20Dashboard/README.md) (Capacity & Cost Optimization)
 
 **Function:** Converts the Marketing forecast into a feasible build plan per Zone, assigns machines/workers to specific sections, and calculates the "Real Unit Cost" to flag unprofitable overtime.
 

@@ -21,12 +21,24 @@ import re
 import sys
 
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+# Add parent directory to path to import case_parameters
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
-    from case_parameters import MARKET
+    from case_parameters import MARKET, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     MARKET = {}
+    COMMON = {}  # Add missing COMMON init
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -41,27 +53,12 @@ REQUIRED_FILES = [
     'sales_admin_expenses.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+OUTPUT_FILE = OUTPUT_DIR / "CMO_Dashboard_Complete.xlsx"
 
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "CMO_Dashboard_Complete.xlsx"
-MY_COMPANY = "Company 3"
-
-ZONES = ["Center", "West", "North", "East", "South"]
-SEGMENTS = ["High", "Low"]
+# Use centralized constants from case_parameters
+MY_COMPANY = COMMON.get('MY_COMPANY', "Company 3")
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
+SEGMENTS = COMMON.get('SEGMENTS', ["High", "Low"])
 
 # Defaults - set to 0 to ensure data comes only from Excel files
 DEFAULT_PRICE = 0
@@ -95,7 +92,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 
@@ -159,9 +156,9 @@ def load_market_report(filepath):
             for col_idx in range(len(row)):
                 col_val = str(row.iloc[col_idx]).strip() if pd.notna(row.iloc[col_idx]) else ''
                 # Find Company 3 column (matches "Company 3 A" or "Company 3")
-                if 'Company 3' in col_val or MY_COMPANY in col_val:
+                if MY_COMPANY in col_val:
                     my_company_col = col_idx
-                elif 'Company' in col_val and 'Company 3' not in col_val:
+                elif 'Company' in col_val and MY_COMPANY not in col_val:
                     comp_cols.append(col_idx)
         
         # Parse zone data rows
@@ -240,7 +237,7 @@ def load_market_report(filepath):
     return data
 
 
-def load_innovation_template(filepath):
+def load_innovation_features(filepath):
     """Load innovation features dynamically."""
     df = load_excel_file(filepath, sheet_name='Innovation')
     
@@ -324,7 +321,7 @@ def load_marketing_template(filepath):
     return template
 
 
-def load_sales_data(filepath):
+def load_sales_admin_expenses(filepath):
     """Load sales and expenses data from website export format."""
     df = load_excel_file(filepath)
     
@@ -380,7 +377,7 @@ def load_sales_data(filepath):
     return data
 
 
-def load_inventory_data(filepath):
+def load_finished_goods_inventory(filepath):
     """Load inventory to detect stockouts from website export format."""
     df = load_excel_file(filepath)
     
@@ -511,7 +508,7 @@ def load_marketing_intelligence(filepath_sales, filepath_market):
     return intelligence
 
 def create_complete_dashboard(market_data, innovation_features, marketing_template, 
-                               sales_data, inventory_data, marketing_intelligence):
+                               sales_data, inventory_data, marketing_intelligence, output_buffer=None, decision_overrides=None):
     """Create the complete 5-tab CMO Dashboard."""
     
     wb = Workbook()
@@ -560,7 +557,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # TAB 1: SEGMENT_PULSE
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "SEGMENT_PULSE"
+    ws1.title = "SEGMENT PULSE"
     
     ws1['A1'] = "SEGMENT PULSE - Market Allocation Drivers"
     ws1['A1'].font = title_font
@@ -602,16 +599,18 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             zone_pop = pop_data.get(zone, {}).get(segment, 10000) # Default 10k if missing
             est_units_sold = zone_pop * (market_share / 100)
             
-            my_awareness = zone_data.get('my_awareness', DEFAULT_AWARENESS)
-            my_awareness = zone_data.get('my_awareness', DEFAULT_AWARENESS)
-            comp_awareness = zone_seg.get('comp_avg_awareness', DEFAULT_AWARENESS)
+            # FIX: Prefer segment-specific data over zone-level data (matching UI behavior)
+            my_awareness = zone_seg.get('my_awareness', zone_data.get('my_awareness', DEFAULT_AWARENESS))
+            comp_awareness = zone_seg.get('comp_avg_awareness', zone_data.get('comp_avg_awareness', DEFAULT_AWARENESS))
             awareness_gap = my_awareness - comp_awareness
             
-            my_price = zone_data.get('my_price', DEFAULT_PRICE)
-            comp_price = zone_data.get('comp_avg_price', DEFAULT_PRICE)
+            my_price = zone_seg.get('my_price', zone_data.get('my_price', DEFAULT_PRICE))
+            comp_price = zone_seg.get('comp_avg_price', zone_data.get('comp_avg_price', DEFAULT_PRICE))
             price_gap = ((my_price - comp_price) / comp_price * 100) if comp_price > 0 else 0
             
-            attractiveness = zone_data.get('my_attractiveness', DEFAULT_ATTRACTIVENESS)
+            # FIX: Prefer segment-specific attractiveness (matching UI behavior)
+            attractiveness = zone_seg.get('my_attractiveness', zone_data.get('my_attractiveness', DEFAULT_ATTRACTIVENESS))
+
             
             # Allocation flag logic
             # First check for zones with no market presence
@@ -847,7 +846,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # =========================================================================
     # TAB 2: INNOVATION_LAB
     # =========================================================================
-    ws2 = wb.create_sheet("INNOVATION_LAB")
+    ws2 = wb.create_sheet("INNOVATION LAB")
     
     ws2['A1'] = "INNOVATION LAB - Feature Selection"
     ws2['A1'].font = title_font
@@ -876,7 +875,11 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         cost_str = f"${upfront:,.0f} + ${variable:.2f}/unit"
         ws2.cell(row=row, column=3, value=cost_str).border = thin_border
         
-        cell = ws2.cell(row=row, column=2, value=0)
+        dec_val = 0
+        if decision_overrides and 'innovation' in decision_overrides:
+             dec_val = decision_overrides['innovation'].get(feature, 0)
+
+        cell = ws2.cell(row=row, column=2, value=dec_val)
         cell.border = thin_border
         cell.fill = input_fill
         cell.alignment = Alignment(horizontal='center')
@@ -924,7 +927,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # =========================================================================
     # TAB 3:    _COCKPIT
     # =========================================================================
-    ws3 = wb.create_sheet("STRATEGY_COCKPIT")
+    ws3 = wb.create_sheet("STRATEGY COCKPIT")
     
     ws3['A1'] = "HOW TO USE: Adjust Yellow cells. Check Profit Projection. Go to UPLOAD_READY tabs to copy decisions."
     ws3['A1'].font = Font(italic=True, color="666666")
@@ -964,6 +967,10 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws3.cell(row=9, column=1, value="TV Spots (Qty)").border = thin_border
     # Convert budget to spots approx
     tv_spots_init = int(marketing_template['tv_budget'] / tv_cost_spot) if tv_cost_spot else 0
+    
+    if decision_overrides and 'tv_spots' in decision_overrides:
+         tv_spots_init = decision_overrides['tv_spots']
+
     cell = ws3.cell(row=9, column=2, value=tv_spots_init)
     cell.border = thin_border
     cell.fill = input_fill
@@ -976,7 +983,11 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     cell.border = thin_border
     
     ws3.cell(row=10, column=1, value="Brand Focus (0-100)").border = thin_border
-    cell = ws3.cell(row=10, column=2, value=marketing_template['brand_focus'])
+    brand_focus_val = marketing_template['brand_focus']
+    if decision_overrides and 'brand_focus' in decision_overrides:
+         brand_focus_val = decision_overrides['brand_focus']
+
+    cell = ws3.cell(row=10, column=2, value=brand_focus_val)
     cell.border = thin_border
     cell.fill = input_fill
     ws3['C10'] = "0=Awareness focus, 100=Attributes focus"
@@ -1019,24 +1030,40 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             cell.fill = ref_fill
         
         # Target Demand
-        cell = ws3.cell(row=row, column=4, value=marketing_template['demand'].get(zone, 0))
+        dem_val = marketing_template['demand'].get(zone, 0)
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             dem_val = decision_overrides['zones'][zone].get('target_demand', dem_val)
+        
+        cell = ws3.cell(row=row, column=4, value=dem_val)
         cell.border = thin_border
         cell.fill = input_fill
         
         # Radio Spots (Qty)
         radio_bud = marketing_template['radio_budgets'].get(zone, 0)
         radio_spots_init = int(radio_bud / radio_cost_spot) if radio_cost_spot else 0
+        
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             radio_spots_init = decision_overrides['zones'][zone].get('radio', radio_spots_init)
+        
         cell = ws3.cell(row=row, column=5, value=radio_spots_init)
         cell.border = thin_border
         cell.fill = input_fill
         
         # Salespeople (Headcount)
-        cell = ws3.cell(row=row, column=6, value=marketing_template['salespeople'].get(zone, 0))
+        hc_val = marketing_template['salespeople'].get(zone, 0)
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             hc_val = decision_overrides['zones'][zone].get('salespeople', hc_val)
+             
+        cell = ws3.cell(row=row, column=6, value=hc_val)
         cell.border = thin_border
         cell.fill = input_fill
         
         # Price
-        cell = ws3.cell(row=row, column=7, value=marketing_template['prices'].get(zone, 0))
+        price_val = marketing_template['prices'].get(zone, 0)
+        if decision_overrides and 'zones' in decision_overrides and zone in decision_overrides['zones']:
+             price_val = decision_overrides['zones'][zone].get('price', price_val)
+             
+        cell = ws3.cell(row=row, column=7, value=price_val)
         cell.border = thin_border
         cell.fill = input_fill
         cell.number_format = '$#,##0'
@@ -1105,7 +1132,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # =========================================================================
     # TAB 4: UPLOAD_READY_MARKETING
     # =========================================================================
-    ws4 = wb.create_sheet("UPLOAD_READY_MARKETING")
+    ws4 = wb.create_sheet("UPLOAD READY MARKETING")
     
     ws4['A1'] = "MARKETING DECISIONS - ExSim Upload Format"
     ws4['A1'].font = title_font
@@ -1128,8 +1155,8 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws4.cell(row=6, column=1, value='A').border = thin_border
     ws4.cell(row=6, column=2, value='All').border = thin_border
     ws4.cell(row=6, column=3, value='TV').border = thin_border
-    ws4.cell(row=6, column=4, value='=STRATEGY_COCKPIT!C9').border = thin_border # C9 = Calculated Cost
-    ws4.cell(row=6, column=5, value='=STRATEGY_COCKPIT!B10').border = thin_border
+    ws4.cell(row=6, column=4, value="='STRATEGY COCKPIT'!C9").border = thin_border # C9 = Calculated Cost
+    ws4.cell(row=6, column=5, value="='STRATEGY COCKPIT'!B10").border = thin_border
     
     # Radio rows
     row = 7
@@ -1143,8 +1170,8 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         # Radio Amount = Spots (E) * CostPerSpot (CheatSheet B2)
         # Zone rows start at 16
         source_row = 16 + zone_idx
-        ws4.cell(row=row, column=4, value=f'=STRATEGY_COCKPIT!E{source_row}*STRATEGY_COCKPIT!{radio_cost_cell}').border = thin_border
-        ws4.cell(row=row, column=5, value='=STRATEGY_COCKPIT!B10').border = thin_border
+        ws4.cell(row=row, column=4, value=f"='STRATEGY COCKPIT'!E{source_row}*'STRATEGY COCKPIT'!{radio_cost_cell}").border = thin_border
+        ws4.cell(row=row, column=5, value="='STRATEGY COCKPIT'!B10").border = thin_border
         row += 1
     
     # Demand section (cols G-H)
@@ -1159,7 +1186,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     for zone_idx, zone in enumerate(ZONES):
         source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=7, value=zone).border = thin_border
-        ws4.cell(row=6+zone_idx, column=8, value=f'=STRATEGY_COCKPIT!D{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=8, value=f"='STRATEGY COCKPIT'!D{source_row}").border = thin_border
     
     # Pricing section (cols J-L)
     ws4['J4'] = "Pricing Strategy"
@@ -1176,7 +1203,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=10, value=zone).border = thin_border
         ws4.cell(row=6+zone_idx, column=11, value='A').border = thin_border
-        ws4.cell(row=6+zone_idx, column=12, value=f'=STRATEGY_COCKPIT!G{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=12, value=f"='STRATEGY COCKPIT'!G{source_row}").border = thin_border
     
     # Channels section (cols N-P)
     ws4['N4'] = "Channels"
@@ -1193,14 +1220,14 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=14, value=zone).border = thin_border
         # Payment is col 9 (I)
-        ws4.cell(row=6+zone_idx, column=15, value=f'=STRATEGY_COCKPIT!I{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=15, value=f"='STRATEGY COCKPIT'!I{source_row}").border = thin_border
         # Salespeople is col 6 (F)
-        ws4.cell(row=6+zone_idx, column=16, value=f'=STRATEGY_COCKPIT!F{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=16, value=f"='STRATEGY COCKPIT'!F{source_row}").border = thin_border
     
     # =========================================================================
     # TAB 5: UPLOAD_READY_INNOVATION
     # =========================================================================
-    ws5 = wb.create_sheet("UPLOAD_READY_INNOVATION")
+    ws5 = wb.create_sheet("UPLOAD READY INNOVATION")
     
     ws5['A1'] = "INNOVATION DECISIONS - ExSim Upload Format"
     ws5['A1'].font = title_font
@@ -1225,8 +1252,78 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws5.column_dimensions['B'].width = 35
     ws5.column_dimensions['C'].width = 10
     
+    ws5.column_dimensions['A'].width = 10
+    ws5.column_dimensions['B'].width = 35
+    ws5.column_dimensions['C'].width = 10
+    
+    # =========================================================================
+    # TAB 6: CROSS_REFERENCE (Upstream Data)
+    # =========================================================================
+    ws6 = wb.create_sheet("CROSS REFERENCE")
+    
+    ws6['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
+    ws6['A1'].font = title_font
+    ws6['A2'] = "Key metrics from Production and Finance."
+    ws6['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        cfo_data = import_dashboard_data('CFO') or {}
+    except ImportError:
+        prod_data = {}
+        cfo_data = {}
+    
+    row = 4
+    
+    # Production Section
+    ws6.cell(row=row, column=1, value="Production (Capacity)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid") # Blue
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    prod_metrics = [
+        ("Production Plan (Total Units)", f"{sum([d.get('Target',0) for d in prod_data.get('production_plan', {}).values()]) if prod_data and 'production_plan' in prod_data else 'N/A'}"),
+        ("Avg Capacity Utilization", f"{prod_data.get('capacity_utilization', {}).get('mean', 0)*100:.1f}%" if prod_data else "N/A"),
+    ]
+    
+    for label, value in prod_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        ws6.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+        
+    row += 2
+    
+    # CFO Section
+    ws6.cell(row=row, column=1, value="Finance (Budget)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid") # Green
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    cfo_metrics = [
+        ("Budget Status", "Check Finance Dashboard"),
+        ("Liquidity Status", cfo_data.get('liquidity_status', 'Unknown') if cfo_data else "Unknown"),
+    ]
+    
+    for label, value in cfo_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        ws6.cell(row=row, column=2, value=value).border = thin_border
+        row += 1
+
+    # Formatting
+    for col in ['A', 'B']:
+        ws6.column_dimensions[col].width = 30
+
     # Save
-    wb.save(OUTPUT_FILE)
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
     print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
@@ -1236,8 +1333,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # Market Report
     market_path = get_data_path("market-report.xlsx")
@@ -1251,10 +1349,10 @@ def main():
     # Innovation Template
     innov_path = get_data_path("Marketing Innovation Decisions.xlsx")
     if innov_path:
-        innovation_features = load_innovation_template(innov_path)
+        innovation_features = load_innovation_features(innov_path)
         print(f"  [OK] Loaded {len(innovation_features)} innovation features")
     else:
-        innovation_features = load_innovation_template(None)
+        innovation_features = load_innovation_features(None)
         print("  [!] Using default innovation features")
     
     # Marketing Template
@@ -1269,20 +1367,20 @@ def main():
     # Sales Data
     sales_path = get_data_path("sales_admin_expenses.xlsx")
     if sales_path:
-        sales_data = load_sales_data(sales_path)
+        sales_data = load_sales_admin_expenses(sales_path)
         print(f"  [OK] Loaded sales data")
     else:
-        sales_data = load_sales_data(None)
+        sales_data = load_sales_admin_expenses(None)
         print("  [!] Using default sales data")
     
     # Inventory
     inv_path = get_data_path("finished_goods_inventory.xlsx")
     if inv_path:
-        inventory_data = load_inventory_data(inv_path)
+        inventory_data = load_finished_goods_inventory(inv_path)
         stockout_status = "STOCKOUT DETECTED" if inventory_data['is_stockout'] else "OK"
         print(f"  [OK] Loaded inventory: {stockout_status}")
     else:
-        inventory_data = load_inventory_data(None)
+        inventory_data = load_finished_goods_inventory(None)
         print("  [!] Using default inventory data")
     
     # NEW: Marketing Intelligence (Unit Economics)
@@ -1300,6 +1398,28 @@ def main():
     print("  * STRATEGY_COCKPIT (4 Ps Decisions + ROI)")
     print("  * UPLOAD_READY_MARKETING (ExSim Format)")
     print("  * UPLOAD_READY_INNOVATION (ExSim Format)")
+    
+    # Export key metrics for downstream dashboards
+    # Export key metrics for downstream dashboards
+    if export_dashboard_data:
+        # Safely calculate innovation costs (Default to 0 as we don't have decisions in main)
+        innov_costs = 0
+        
+        # Calculate marketing spend from historicals if available
+        # Note: This is just for initial population; real spend comes from user decisions in the dashboard
+        marketing_spend = sales_data.get('totals', {}).get('tv_spend', 0) + \
+                          sales_data.get('totals', {}).get('radio_spend', 0)
+        
+        export_dashboard_data('CMO', {
+            # Use demand from marketing template (target demand)
+            'demand_forecast': marketing_template.get('demand', {z: 0 for z in ZONES}),
+            'marketing_spend': marketing_spend,
+            # Use price from marketing template or market data
+            'pricing': {zone: marketing_template.get('prices', {}).get(zone, 0) or 
+                              market_data.get('zones', {}).get(zone, {}).get('my_price', 0) 
+                        for zone in ZONES},
+            'innovation_costs': innov_costs
+        })
 
 
 if __name__ == "__main__":

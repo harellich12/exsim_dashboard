@@ -16,8 +16,16 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state, get_summary_metrics
 
-# Constants
-FORTNIGHTS = list(range(1, 9))
+# Import centralized constants from case_parameters
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import COMMON
+    FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+except ImportError:
+    FORTNIGHTS = list(range(1, 9))
+
 ST_LIMIT = 500000  # Short-term debt limit
 LT_LIMIT = 2000000  # Long-term debt limit
 DEFAULT_TAX_RATE = 0.25
@@ -609,8 +617,80 @@ def render_upload_ready_finance():
     div_total = sum(st.session_state.cfo_financing.at[3, f'FN{fn}'] for fn in FORTNIGHTS)
     st.metric("Total Dividends", f"${div_total:,.0f}")
     
-    if st.button("📋 Copy Finance Decisions", type="primary", key="cfo_copy"):
-        st.success("✅ Data copied! Paste into ExSim Finance form.")
+    # CSV download button
+    import io
+    output = io.StringIO()
+    output.write("=== CREDIT LINES ===\n")
+    if credit_summary:
+        pd.DataFrame(credit_summary).to_csv(output, index=False)
+    output.write("\n=== INVESTMENTS ===\n")
+    if invest_summary:
+        pd.DataFrame(invest_summary).to_csv(output, index=False)
+    output.write("\n=== MORTGAGES ===\n")
+    mortgages.to_csv(output, index=False)
+    output.write(f"\n=== DIVIDENDS ===\nTotal,{div_total}\n")
+    csv_data = output.getvalue()
+    
+    st.download_button(
+        label="📥 Download Decisions as CSV",
+        data=csv_data,
+        file_name="finance_decisions.csv",
+        mime="text/csv",
+        type="primary",
+        key='cfo_csv_download'
+    )
+
+
+def render_cross_reference():
+    """Render CROSS_REFERENCE sub-tab - Upstream data visibility."""
+    st.subheader("🔗 CROSS REFERENCE - Upstream Cost Drivers")
+    st.caption("Live visibility into Revenue Projections and Cost Centers.")
+    
+    # Load shared data
+    try:
+        from shared_outputs import import_dashboard_data
+        cmo_data = import_dashboard_data('CMO') or {}
+        cpo_data = import_dashboard_data('CPO') or {}
+        purch_data = import_dashboard_data('Purchasing') or {}
+        clo_data = import_dashboard_data('CLO') or {}
+    except ImportError:
+        st.error("Could not load shared_outputs module")
+        cmo_data = {}
+        cpo_data = {}
+        purch_data = {}
+        clo_data = {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### 📈 Revenue (CMO)")
+        st.info("Sales Forecast based on current prices.")
+        
+        rev = cmo_data.get('est_revenue', 0)
+        mkt_cost = cmo_data.get('marketing_cost', 0)
+        
+        st.metric("Proj. Revenue", f"${rev:,.0f}")
+        st.metric("Marketing Budget", f"${mkt_cost:,.0f}")
+
+    with col2:
+        st.markdown("### 💸 Cost Structure (Variable)")
+        st.info("Aggregated costs from all departments.")
+        
+        labor = cpo_data.get('total_labor_cost', 0)
+        material = purch_data.get('supplier_spend', 0)
+        logistics = clo_data.get('logistics_costs', 0)
+        
+        total_variable = labor + material + logistics
+        
+        # DataFrame for breakdown
+        cost_df = pd.DataFrame([
+            {"Category": "Labor (CPO)", "Amount": labor},
+            {"Category": "Materials (Purchasing)", "Amount": material},
+            {"Category": "Logistics (CLO)", "Amount": logistics},
+            {"Category": "TOTAL VARIABLE", "Amount": total_variable}
+        ])
+        
+        st.dataframe(cost_df.style.format({"Amount": "${:,.0f}"}), hide_index=True)
 
 
 def render_cfo_tab():
@@ -618,7 +698,24 @@ def render_cfo_tab():
     init_cfo_state()
     sync_from_uploads()
     
-    st.header("💰 CFO Dashboard - Financial Control & Liquidity")
+    # Header with Download Button
+    col_header, col_download = st.columns([4, 1])
+    with col_header:
+        st.header("💰 CFO Dashboard - Financial Control & Liquidity")
+    with col_download:
+        try:
+            from utils.report_bridge import ReportBridge
+            excel_buffer = ReportBridge.export_finance_dashboard()
+            st.download_button(
+                label="📥 Download Live",
+                data=excel_buffer,
+                file_name="Finance_Dashboard_Live.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"Export: {e}")
     
     # Data source status
     balance = get_state('balance_data')
@@ -649,13 +746,14 @@ def render_cfo_tab():
     with col5:
         st.metric("Total Out", f"${metrics['Total Out']:,.0f}", delta_color="inverse")
     
-    # 5 SUBTABS - Matching Excel sheets exactly
+    # 6 SUBTABS (Updated)
     subtabs = st.tabs([
         "💧 Liquidity Monitor",
         "📊 Profit Control",
         "🏦 Balance Sheet",
         "🏠 Debt Manager",
-        "📤 Upload Ready"
+        "📤 Upload Ready",
+        "🔗 Cross Reference"
     ])
     
     with subtabs[0]:
@@ -672,3 +770,6 @@ def render_cfo_tab():
     
     with subtabs[4]:
         render_upload_ready_finance()
+        
+    with subtabs[5]:
+        render_cross_reference()

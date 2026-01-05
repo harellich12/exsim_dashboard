@@ -9,6 +9,36 @@ Usage:
 """
 
 # =============================================================================
+# 0. COMMON PARAMETERS (Shared Across All Dashboards)
+# =============================================================================
+COMMON = {
+    # Geographic zones - used by Production, Logistics, Marketing, CPO
+    "ZONES": ["Center", "West", "North", "East", "South"],
+    
+    # Time periods - 8 fortnights per simulation period
+    "FORTNIGHTS": list(range(1, 9)),  # [1, 2, 3, 4, 5, 6, 7, 8]
+    
+    # Market segments - used by CMO, Production
+    "SEGMENTS": ["High", "Low"],
+    
+    # Production sections - used by Production Manager
+    "SECTIONS": ["Section 1", "Section 2", "Section 3"],
+    
+    # Machine types - used by Production, CFO (depreciation)
+    "MACHINE_TYPES": ["M1", "M2", "M3-alpha", "M3-beta", "M4"],
+    
+    # Transport modes - used by CLO
+    "TRANSPORT_MODES": ["Train", "Truck", "Plane"],
+    
+    # Parts and pieces - used by Purchasing
+    "PARTS": ["Part A", "Part B"],
+    "PIECES": ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"],
+    
+    # Output file standard format
+    "MY_COMPANY": "Company 3"  # Default company identifier
+}
+
+# =============================================================================
 # 1. FINANCIAL PARAMETERS (CFO)
 # =============================================================================
 FINANCIAL = {

@@ -18,12 +18,24 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 try:
-    from case_parameters import FINANCIAL
+    from case_parameters import FINANCIAL, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     FINANCIAL = {}
+    COMMON = {}
+    # Fallback for config if not found (though it should be providing we are in right structure)
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data, import_dashboard_data
+except ImportError:
+    export_dashboard_data = None
+    import_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -40,25 +52,9 @@ REQUIRED_FILES = [
     'Finance Decisions.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+OUTPUT_FILE = OUTPUT_DIR / "Finance_Dashboard_Final.xlsx"
 
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "Finance_Dashboard_Final.xlsx"
-
-FORTNIGHTS = list(range(1, 9))  # 1-8
+FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))  # From centralized config
 
 # Default financial parameters
 DEF_LOANS = FINANCIAL.get('LOANS', {})
@@ -95,7 +91,7 @@ def load_excel_file(filepath, sheet_name=None):
             return pd.read_excel(filepath, sheet_name=sheet_name, header=None)
         return pd.read_excel(filepath, header=None)
     except Exception as e:
-        print(f"Warning: Could not load {filepath}: {e}")
+        sys.stderr.write(f"[ERROR] Could not load {filepath}: {e}\n")
         return None
 
 
@@ -416,8 +412,23 @@ def load_retained_earnings(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data, hard_data=None):
-    """Create the Finance Dashboard with Hard Data injection."""
+def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, template_data, hard_data=None, output_buffer=None):
+    """
+    Create the Finance Dashboard with Hard Data injection.
+    
+    Args:
+        cash_data: Cash flow data dict
+        balance_data: Balance sheet data dict
+        sa_data: Sales & Admin expenses dict
+        ar_ap_data: Accounts receivable/payable dict
+        template_data: Template configuration
+        hard_data: Hard data values dict (optional)
+        output_buffer: io.BytesIO buffer for output (optional). If provided, returns
+                      the buffer instead of saving to disk.
+    
+    Returns:
+        BytesIO buffer if output_buffer provided, None otherwise
+    """
     
     # Handle missing hard_data
     if hard_data is None:
@@ -452,7 +463,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # TAB 1: LIQUIDITY_MONITOR
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "LIQUIDITY_MONITOR"
+    ws1.title = "LIQUIDITY MONITOR"
     
     ws1['A1'] = "LIQUIDITY MONITOR - Cash Flow Engine"
     ws1['A1'].font = title_font
@@ -751,7 +762,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 2: PROFIT_CONTROL
     # =========================================================================
-    ws2 = wb.create_sheet("PROFIT_CONTROL")
+    ws2 = wb.create_sheet("PROFIT CONTROL")
     
     ws2['A1'] = "PROFIT CONTROL - Income Statement Forecast vs Actuals"
     ws2['A1'].font = title_font
@@ -948,7 +959,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 3: BALANCE_SHEET_HEALTH
     # =========================================================================
-    ws3 = wb.create_sheet("BALANCE_SHEET_HEALTH")
+    ws3 = wb.create_sheet("BALANCE SHEET HEALTH")
     
     ws3['A1'] = "BALANCE SHEET HEALTH - Solvency & Debt Control"
     ws3['A1'].font = title_font
@@ -1092,7 +1103,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 4: DEBT_MANAGER
     # =========================================================================
-    ws4 = wb.create_sheet("DEBT_MANAGER")
+    ws4 = wb.create_sheet("DEBT MANAGER")
     
     ws4['A1'] = "DEBT MANAGER - Mortgage Calculator"
     ws4['A1'].font = title_font
@@ -1188,7 +1199,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 5: UPLOAD_READY_FINANCE
     # =========================================================================
-    ws5 = wb.create_sheet("UPLOAD_READY_FINANCE")
+    ws5 = wb.create_sheet("UPLOAD READY FINANCE")
     
     ws5['A1'] = "FINANCE DECISIONS - ExSim Upload Format"
     ws5['A1'].font = title_font
@@ -1268,9 +1279,152 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     for col in range(1, 10):
         ws5.column_dimensions[get_column_letter(col)].width = 14
     
+    # =========================================================================
+    # TAB 6: CROSS_REFERENCE (Upstream Dashboard KPIs)
+    # =========================================================================
+    ws6 = wb.create_sheet("CROSS REFERENCE")
+    
+    ws6['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Dashboard KPIs"
+    ws6['A1'].font = title_font
+    ws6['A2'] = "Key metrics from other dashboards affecting cash flow. Data from shared_outputs.json."
+    ws6['A2'].font = Font(italic=True, color="666666")
+    
+    # Load shared outputs
+    try:
+        shared_data = import_dashboard_data('CMO') if import_dashboard_data else {}
+        cmo_data_shared = shared_data or {}
+        prod_data_shared = (import_dashboard_data('Production') or {}) if import_dashboard_data else {}
+        purch_data_shared = (import_dashboard_data('Purchasing') or {}) if import_dashboard_data else {}
+        clo_data_shared = (import_dashboard_data('CLO') or {}) if import_dashboard_data else {}
+        cpo_data_shared = (import_dashboard_data('CPO') or {}) if import_dashboard_data else {}
+        esg_data_shared = (import_dashboard_data('ESG') or {}) if import_dashboard_data else {}
+    except:
+        cmo_data_shared = prod_data_shared = purch_data_shared = clo_data_shared = cpo_data_shared = esg_data_shared = {}
+    
+    row = 4
+    
+    # CMO Section (Revenue & Marketing)
+    ws6.cell(row=row, column=1, value="CMO (Revenue & Marketing)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    rev = cmo_data_shared.get('est_revenue', 0)
+    
+    cmo_metrics = [
+        ("Projected Revenue", rev, "$#,##0"),
+        ("Marketing Spend", cmo_data_shared.get('marketing_spend', 0) if cmo_data_shared else 0, "$#,##0"),
+        ("Innovation Costs", cmo_data_shared.get('innovation_costs', 0) if cmo_data_shared else 0, "$#,##0"),
+    ]
+    for label, value, fmt in cmo_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+    
+    row += 1
+    
+    # Production Section
+    ws6.cell(row=row, column=1, value="PRODUCTION (Output)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    prod_plan = prod_data_shared.get('production_plan', {}) if prod_data_shared else {}
+    
+    # Handle dict values (new format) or int values (legacy)
+    total_production = 0
+    if prod_plan:
+        for v in prod_plan.values():
+            if isinstance(v, dict):
+                total_production += v.get('Target', 0)
+            else:
+                total_production += v
+
+    unit_costs = prod_data_shared.get('unit_costs', {}) if prod_data_shared else {}
+    avg_cost = sum(unit_costs.values()) / len(unit_costs) if unit_costs else 0
+    
+    # Handle capacity_utilization dict
+    cap_util = prod_data_shared.get('capacity_utilization', 0) if prod_data_shared else 0
+    if isinstance(cap_util, dict):
+        cap_util_val = cap_util.get('mean', 0)
+    else:
+        cap_util_val = cap_util
+
+    prod_metrics = [
+        ("Total Production", total_production, "#,##0"),
+        ("Avg Unit Cost", avg_cost, "$#,##0.00"),
+        ("Utilization", cap_util_val, "0.0%"),
+    ]
+    for label, value, fmt in prod_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+    
+    row += 1
+    
+    # Cost Aggregation (COGS Drivers)
+    ws6.cell(row=row, column=1, value="COST DRIVERS (Variable)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    labor_cost = cpo_data_shared.get('payroll_forecast', 0) # Using payroll forecast as proxy for total labor cost
+    material_cost = purch_data_shared.get('supplier_spend', 0)
+    logistics_cost = clo_data_shared.get('logistics_costs', 0)
+    
+    cogs_metrics = [
+        ("Labor (CPO)", labor_cost, "$#,##0"),
+        ("Materials (Purchasing)", material_cost, "$#,##0"),
+        ("Logistics (CLO)", logistics_cost, "$#,##0"),
+        ("TOTAL VARIABLE EST.", labor_cost + material_cost + logistics_cost, "$#,##0")
+    ]
+    
+    for label, value, fmt in cogs_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+
+    row += 1
+
+    # ESG Section
+    ws6.cell(row=row, column=1, value="ESG (Sustainability)").font = section_font
+    ws6.cell(row=row, column=1).fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
+    ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
+    row += 1
+    
+    esg_metrics = [
+        ("CO2 Emissions", esg_data_shared.get('co2_emissions', 0) if esg_data_shared else 0, "#,##0"),
+        ("Tax Liability", esg_data_shared.get('tax_liability', 0) if esg_data_shared else 0, "$#,##0"),
+    ]
+    for label, value, fmt in esg_metrics:
+        ws6.cell(row=row, column=1, value=label).border = thin_border
+        cell = ws6.cell(row=row, column=2, value=value)
+        cell.border = thin_border
+        cell.fill = ref_fill
+        cell.number_format = fmt
+        row += 1
+
+    # Formatting
+    for col in ['A', 'B']:
+        ws6.column_dimensions[col].width = 35
+
     # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    if output_buffer:
+        wb.save(output_buffer)
+        return output_buffer
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+        return None
 
 
 def main():
@@ -1279,8 +1433,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # Initial Cash Flow
     cash_path = get_data_path("initial_cash_flow.xlsx")
@@ -1379,6 +1534,14 @@ def main():
     print("  * BALANCE_SHEET_HEALTH (Solvency & Debt)")
     print("  * DEBT_MANAGER (Mortgage Calculator)")
     print("  * UPLOAD_READY_FINANCE (ExSim Format)")
+    
+    # Export key metrics for use by other systems
+    if export_dashboard_data:
+        export_dashboard_data('CFO', {
+            'cash_flow_projection': cash_data,
+            'debt_levels': balance_data.get('total_debt', 0),
+            'liquidity_status': 'OK' if cash_data.get('ending_cash', 0) > 0 else 'LOW'
+        })
 
 
 if __name__ == "__main__":

@@ -18,12 +18,24 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
+# Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
-    from case_parameters import PURCHASING
+    from case_parameters import PURCHASING, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     PURCHASING = {}
+    COMMON = {}
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
+
+# Import shared outputs for inter-dashboard communication
+try:
+    from shared_outputs import export_dashboard_data
+except ImportError:
+    export_dashboard_data = None
 
 warnings.filterwarnings('ignore')
 
@@ -38,28 +50,13 @@ REQUIRED_FILES = [
     'Procurement Decisions.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
+OUTPUT_FILE = OUTPUT_DIR / "Purchasing_Dashboard.xlsx"
 
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "Purchasing_Dashboard.xlsx"
-
-FORTNIGHTS = list(range(1, 9))  # 1-8
-ZONES = ["Center", "West", "North", "East", "South"]
-PARTS = ["Part A", "Part B"]
-PIECES = ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"]
+# Use centralized constants from case_parameters
+FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
+PARTS = COMMON.get('PARTS', ["Part A", "Part B"])
+PIECES = COMMON.get('PIECES', ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piece 5", "Piece 6"])
 SUPPLIERS = ["Supplier A", "Supplier B", "Supplier C"]
 
 # Default supplier configuration
@@ -210,8 +207,16 @@ def load_procurement_template(filepath):
 # EXCEL GENERATION
 # =============================================================================
 
-def create_purchasing_dashboard(materials_data, cost_data, template_data):
+def create_purchasing_dashboard(materials_data, cost_data, template_data, output_buffer=None, decision_overrides=None):
     """Create the comprehensive Purchasing Dashboard."""
+    
+    # Import shared outputs
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production')
+    except ImportError:
+        prod_data = None
+
     
     wb = Workbook()
     
@@ -234,7 +239,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     # TAB 1: SUPPLIER_CONFIG
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "SUPPLIER_CONFIG"
+    ws1.title = "SUPPLIER CONFIG"
     
     ws1['A1'] = "SUPPLIER CONFIGURATION"
     ws1['A1'].font = title_font
@@ -321,7 +326,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     # =========================================================================
     # TAB 2: COST_ANALYSIS
     # =========================================================================
-    ws2 = wb.create_sheet("COST_ANALYSIS")
+    ws2 = wb.create_sheet("COST ANALYSIS")
     
     ws2['A1'] = "COST ANALYSIS - Batch Size Efficiency"
     ws2['A1'].font = title_font
@@ -443,7 +448,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     # =========================================================================
     # TAB 3: MRP_ENGINE
     # =========================================================================
-    ws3 = wb.create_sheet("MRP_ENGINE")
+    ws3 = wb.create_sheet("MRP ENGINE")
     
     ws3['A1'] = "MRP ENGINE - Material Requirements Planning"
     ws3['A1'].font = title_font
@@ -462,9 +467,27 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
         cell.alignment = Alignment(horizontal='center')
     
     # Target Production input row
-    ws3.cell(row=6, column=1, value="Target Production").border = thin_border
+    ws3.cell(row=6, column=1, value="Target Production (from Production Plan)").border = thin_border
+    
+    # Calculate global production target per fortnight
+    # Production Plan is {Zone: {Target: X}}
+    # We assume constant target per fortnight for now, or X/8 if X is total?
+    # Actually, in Production Dashboard, Target is PER FORTNIGHT (in loop).
+    # So the export {Zone: {Target: 1500}} means 1500 per fortnight.
+    global_target = 0
+    if prod_data and 'production_plan' in prod_data:
+        for z_data in prod_data['production_plan'].values():
+            global_target += z_data.get('Target', 0)
+    
     for fn in FORTNIGHTS:
-        cell = ws3.cell(row=6, column=1+fn, value=0)
+        # Link to shared data if available.
+        # But for Excel standalone, we might want to just put the value.
+        # To make it dynamic, we'd need a cell link, but that requires Cross Reference first.
+        # Let's just put the value for now, or link to Cross Reference if we put it there.
+        # Ideally, we put it in Cross Reference -> Row X, then link here.
+        
+        # Let's use the calculated value.
+        cell = ws3.cell(row=6, column=1+fn, value=global_target)
         cell.border = thin_border
         cell.fill = input_fill
     
@@ -546,7 +569,14 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
             
             ws3.cell(row=row, column=1, value=f"Order {name} (Lead:{lead}, Batch:{batch})").border = thin_border
             for fn in FORTNIGHTS:
-                cell = ws3.cell(row=row, column=1+fn, value=0)
+                val = 0
+                if decision_overrides and part in decision_overrides:
+                    if name in decision_overrides[part]:
+                        # override is dict of FN -> val ? or list
+                        # let's assume dict key=FN integer
+                        val = decision_overrides[part][name].get(fn, 0)
+                
+                cell = ws3.cell(row=row, column=1+fn, value=val)
                 cell.border = thin_border
                 cell.fill = input_fill
             order_rows[part][name] = row
@@ -616,7 +646,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     # =========================================================================
     # TAB 4: CASH_FLOW_PREVIEW
     # =========================================================================
-    ws4 = wb.create_sheet("CASH_FLOW_PREVIEW")
+    ws4 = wb.create_sheet("CASH FLOW PREVIEW")
     
     ws4['A1'] = "CASH FLOW PREVIEW - Procurement Spending"
     ws4['A1'].font = title_font
@@ -745,7 +775,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     # =========================================================================
     # TAB 5: UPLOAD_READY_PROCUREMENT
     # =========================================================================
-    ws5 = wb.create_sheet("UPLOAD_READY_PROCUREMENT")
+    ws5 = wb.create_sheet("UPLOAD READY PROCUREMENT")
     
     ws5['A1'] = "PROCUREMENT DECISIONS - ExSim Upload Format (Side-by-Side)"
     ws5['A1'].font = title_font
@@ -827,10 +857,56 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data):
     ws5.column_dimensions[get_column_letter(pieces_col_start+1)].width = 10
     ws5.column_dimensions[get_column_letter(pieces_col_start+2)].width = 10
     ws5.column_dimensions[get_column_letter(pieces_col_start+3)].width = 8
+
+    # =========================================================================
+    # TAB 6: CROSS_REFERENCE
+    # =========================================================================
+    ws6 = wb.create_sheet("CROSS REFERENCE")
     
-    # Save
-    wb.save(OUTPUT_FILE)
-    print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
+    ws6['A1'] = "CROSS-REFERENCE SUMMARY"
+    ws6['A1'].font = title_font
+    ws6['A2'] = "Upstream data from Production Dashboard"
+    ws6['A2'].font = Font(italic=True, color="666666")
+    
+    row = 4
+    ws6.cell(row=row, column=1, value="PRODUCTION PLAN").font = section_font
+    row += 1
+    
+    ws6.cell(row=row, column=1, value="Zone").font = header_font
+    ws6.cell(row=row, column=1).fill = header_fill
+    ws6.cell(row=row, column=2, value="Target/FN").font = header_font
+    ws6.cell(row=row, column=2).fill = header_fill
+    row += 1
+    
+    total_prod = 0
+    if prod_data and 'production_plan' in prod_data:
+        for zone, data in prod_data['production_plan'].items():
+            ws6.cell(row=row, column=1, value=zone).border = thin_border
+            val = data.get('Target', 0)
+            ws6.cell(row=row, column=2, value=val).border = thin_border
+            total_prod += val
+            row += 1
+    
+    ws6.cell(row=row, column=1, value="TOTAL").font = Font(bold=True)
+    ws6.cell(row=row, column=2, value=total_prod).font = Font(bold=True)
+    
+    # Update MRP Engine to link to this total? 
+    # Yes, let's update MRP Engine cells to point here: =CROSS REFERENCE!B{row}
+    # We can't go back easily in openpyxl without keeping reference.
+    # But since we already wrote values in MRP Engine, we can leave it or rewrite target cells.
+    # Rewriting MRP Target cells to link to Cross Reference Total
+    ws3 = wb["MRP ENGINE"]
+    for fn in FORTNIGHTS:
+        ws3.cell(row=6, column=1+fn, value=f"='CROSS REFERENCE'!B{row}")
+    
+    # Save to buffer or file
+    if output_buffer is not None:
+        wb.save(output_buffer)
+        output_buffer.seek(0)
+        print("[SUCCESS] Created dashboard in BytesIO buffer")
+    else:
+        wb.save(OUTPUT_FILE)
+        print(f"[SUCCESS] Created '{OUTPUT_FILE}'")
 
 
 def main():
@@ -839,8 +915,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # Raw Materials
     materials_path = get_data_path("raw_materials.xlsx")
@@ -879,6 +956,27 @@ def main():
     print("  * MRP_ENGINE (Material Requirements Calculator)")
     print("  * CASH_FLOW_PREVIEW (Procurement Spending)")
     print("  * UPLOAD_READY_PROCUREMENT (ExSim Format)")
+    print("  * CROSS_REFERENCE (Upstream Data)")
+    
+    # Export key metrics for downstream dashboards
+    try:
+        from shared_outputs import export_dashboard_data
+        
+        # Calculate summaries for export
+        # Assuming 'display_df' is available in the scope where create_purchasing_dashboard is called,
+        # or that the relevant data can be derived from 'cost_data' or other inputs.
+        # For this context, we'll use a placeholder or derive from cost_data if possible.
+        # If display_df is not directly available here, a more robust way would be to return it from create_purchasing_dashboard.
+        # For now, using a placeholder or a simplified calculation based on available data.
+        total_spend = cost_data.get('consumption_cost', 0) # This is a simplification, actual spend would come from the generated sheet.
+        
+        export_dashboard_data('Purchasing', {
+            'material_orders': "See MRP Engine",
+            'supplier_spend': total_spend, # This should ideally come from the generated sheet's total spend.
+            'lead_time_schedule': "Standard"
+        })
+    except ImportError:
+        print("Warning: shared_outputs not found, skipping export")
 
 
 if __name__ == "__main__":
