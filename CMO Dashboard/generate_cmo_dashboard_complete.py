@@ -557,7 +557,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # TAB 1: SEGMENT_PULSE
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "SEGMENT_PULSE"
+    ws1.title = "SEGMENT PULSE"
     
     ws1['A1'] = "SEGMENT PULSE - Market Allocation Drivers"
     ws1['A1'].font = title_font
@@ -846,7 +846,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # =========================================================================
     # TAB 2: INNOVATION_LAB
     # =========================================================================
-    ws2 = wb.create_sheet("INNOVATION_LAB")
+    ws2 = wb.create_sheet("INNOVATION LAB")
     
     ws2['A1'] = "INNOVATION LAB - Feature Selection"
     ws2['A1'].font = title_font
@@ -927,7 +927,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # =========================================================================
     # TAB 3:    _COCKPIT
     # =========================================================================
-    ws3 = wb.create_sheet("STRATEGY_COCKPIT")
+    ws3 = wb.create_sheet("STRATEGY COCKPIT")
     
     ws3['A1'] = "HOW TO USE: Adjust Yellow cells. Check Profit Projection. Go to UPLOAD_READY tabs to copy decisions."
     ws3['A1'].font = Font(italic=True, color="666666")
@@ -1132,7 +1132,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # =========================================================================
     # TAB 4: UPLOAD_READY_MARKETING
     # =========================================================================
-    ws4 = wb.create_sheet("UPLOAD_READY_MARKETING")
+    ws4 = wb.create_sheet("UPLOAD READY MARKETING")
     
     ws4['A1'] = "MARKETING DECISIONS - ExSim Upload Format"
     ws4['A1'].font = title_font
@@ -1155,8 +1155,8 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     ws4.cell(row=6, column=1, value='A').border = thin_border
     ws4.cell(row=6, column=2, value='All').border = thin_border
     ws4.cell(row=6, column=3, value='TV').border = thin_border
-    ws4.cell(row=6, column=4, value='=STRATEGY_COCKPIT!C9').border = thin_border # C9 = Calculated Cost
-    ws4.cell(row=6, column=5, value='=STRATEGY_COCKPIT!B10').border = thin_border
+    ws4.cell(row=6, column=4, value="='STRATEGY COCKPIT'!C9").border = thin_border # C9 = Calculated Cost
+    ws4.cell(row=6, column=5, value="='STRATEGY COCKPIT'!B10").border = thin_border
     
     # Radio rows
     row = 7
@@ -1170,8 +1170,8 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         # Radio Amount = Spots (E) * CostPerSpot (CheatSheet B2)
         # Zone rows start at 16
         source_row = 16 + zone_idx
-        ws4.cell(row=row, column=4, value=f'=STRATEGY_COCKPIT!E{source_row}*STRATEGY_COCKPIT!{radio_cost_cell}').border = thin_border
-        ws4.cell(row=row, column=5, value='=STRATEGY_COCKPIT!B10').border = thin_border
+        ws4.cell(row=row, column=4, value=f"='STRATEGY COCKPIT'!E{source_row}*'STRATEGY COCKPIT'!{radio_cost_cell}").border = thin_border
+        ws4.cell(row=row, column=5, value="='STRATEGY COCKPIT'!B10").border = thin_border
         row += 1
     
     # Demand section (cols G-H)
@@ -1186,7 +1186,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     for zone_idx, zone in enumerate(ZONES):
         source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=7, value=zone).border = thin_border
-        ws4.cell(row=6+zone_idx, column=8, value=f'=STRATEGY_COCKPIT!D{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=8, value=f"='STRATEGY COCKPIT'!D{source_row}").border = thin_border
     
     # Pricing section (cols J-L)
     ws4['J4'] = "Pricing Strategy"
@@ -1203,7 +1203,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=10, value=zone).border = thin_border
         ws4.cell(row=6+zone_idx, column=11, value='A').border = thin_border
-        ws4.cell(row=6+zone_idx, column=12, value=f'=STRATEGY_COCKPIT!G{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=12, value=f"='STRATEGY COCKPIT'!G{source_row}").border = thin_border
     
     # Channels section (cols N-P)
     ws4['N4'] = "Channels"
@@ -1220,14 +1220,14 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
         source_row = 16 + zone_idx
         ws4.cell(row=6+zone_idx, column=14, value=zone).border = thin_border
         # Payment is col 9 (I)
-        ws4.cell(row=6+zone_idx, column=15, value=f'=STRATEGY_COCKPIT!I{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=15, value=f"='STRATEGY COCKPIT'!I{source_row}").border = thin_border
         # Salespeople is col 6 (F)
-        ws4.cell(row=6+zone_idx, column=16, value=f'=STRATEGY_COCKPIT!F{source_row}').border = thin_border
+        ws4.cell(row=6+zone_idx, column=16, value=f"='STRATEGY COCKPIT'!F{source_row}").border = thin_border
     
     # =========================================================================
     # TAB 5: UPLOAD_READY_INNOVATION
     # =========================================================================
-    ws5 = wb.create_sheet("UPLOAD_READY_INNOVATION")
+    ws5 = wb.create_sheet("UPLOAD READY INNOVATION")
     
     ws5['A1'] = "INNOVATION DECISIONS - ExSim Upload Format"
     ws5['A1'].font = title_font
@@ -1259,7 +1259,7 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
     # =========================================================================
     # TAB 6: CROSS_REFERENCE (Upstream Data)
     # =========================================================================
-    ws6 = wb.create_sheet("CROSS_REFERENCE")
+    ws6 = wb.create_sheet("CROSS REFERENCE")
     
     ws6['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
     ws6['A1'].font = title_font

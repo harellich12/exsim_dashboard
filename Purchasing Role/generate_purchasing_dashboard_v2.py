@@ -231,7 +231,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     # TAB 1: SUPPLIER_CONFIG
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "SUPPLIER_CONFIG"
+    ws1.title = "SUPPLIER CONFIG"
     
     ws1['A1'] = "SUPPLIER CONFIGURATION"
     ws1['A1'].font = title_font
@@ -318,7 +318,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     # =========================================================================
     # TAB 2: COST_ANALYSIS
     # =========================================================================
-    ws2 = wb.create_sheet("COST_ANALYSIS")
+    ws2 = wb.create_sheet("COST ANALYSIS")
     
     ws2['A1'] = "COST ANALYSIS - Batch Size Efficiency"
     ws2['A1'].font = title_font
@@ -440,7 +440,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     # =========================================================================
     # TAB 3: MRP_ENGINE
     # =========================================================================
-    ws3 = wb.create_sheet("MRP_ENGINE")
+    ws3 = wb.create_sheet("MRP ENGINE")
     
     ws3['A1'] = "MRP ENGINE - Material Requirements Planning"
     ws3['A1'].font = title_font
@@ -620,7 +620,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     # =========================================================================
     # TAB 4: CASH_FLOW_PREVIEW
     # =========================================================================
-    ws4 = wb.create_sheet("CASH_FLOW_PREVIEW")
+    ws4 = wb.create_sheet("CASH FLOW PREVIEW")
     
     ws4['A1'] = "CASH FLOW PREVIEW - Procurement Spending"
     ws4['A1'].font = title_font
@@ -749,7 +749,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     # =========================================================================
     # TAB 5: UPLOAD_READY_PROCUREMENT
     # =========================================================================
-    ws5 = wb.create_sheet("UPLOAD_READY_PROCUREMENT")
+    ws5 = wb.create_sheet("UPLOAD READY PROCUREMENT")
     
     ws5['A1'] = "PROCUREMENT DECISIONS - ExSim Upload Format (Side-by-Side)"
     ws5['A1'].font = title_font

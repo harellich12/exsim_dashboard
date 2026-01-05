@@ -305,7 +305,7 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
     # TAB 1: ZONE_CALCULATORS
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "ZONE_CALCULATORS"
+    ws1.title = "ZONE CALCULATORS"
 
     ws1['A1'] = "ZONE-SPECIFIC PRODUCTION CALCULATORS"
     ws1['A1'].font = title_font
@@ -534,7 +534,7 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
     # =========================================================================
     # TAB 2: RESOURCE_MGR
     # =========================================================================
-    ws2 = wb.create_sheet("RESOURCE_MGR")
+    ws2 = wb.create_sheet("RESOURCE MGR")
 
     ws2['A1'] = "RESOURCE MANAGER - Zone-by-Zone Asset Allocation"
     ws2['A1'].font = title_font
@@ -696,7 +696,7 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
     # =========================================================================
     # TAB 3: UPLOAD_READY_PRODUCTION
     # =========================================================================
-    ws3 = wb.create_sheet("UPLOAD_READY_PRODUCTION")
+    ws3 = wb.create_sheet("UPLOAD READY PRODUCTION")
 
     ws3['A1'] = "PRODUCTION DECISIONS - ExSim Upload (Zone-Mapped)"
     ws3['A1'].font = title_font
@@ -811,7 +811,7 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
     # =========================================================================
     # TAB 4: CROSS_REFERENCE (Upstream Dashboard KPIs)
     # =========================================================================
-    ws4 = wb.create_sheet("CROSS_REFERENCE")
+    ws4 = wb.create_sheet("CROSS REFERENCE")
     
     ws4['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Dashboard KPIs"
     ws4['A1'].font = title_font

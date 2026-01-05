@@ -1,12 +1,12 @@
 {
   "metadata": {
     "created": "2026-01-04T17:48:51.449955",
-    "last_updated": "2026-01-04T20:04:10.525027",
+    "last_updated": "2026-01-05T15:19:21.315621",
     "version": "1.0"
   },
   "dashboards": {
     "CMO": {
-      "timestamp": "2026-01-04T20:04:09.407559",
+      "timestamp": "2026-01-05T15:19:20.223487",
       "outputs": {
         "demand_forecast": {
           "Center": 0,
@@ -27,7 +27,7 @@
       }
     },
     "Production": {
-      "timestamp": "2026-01-04T20:04:09.625300",
+      "timestamp": "2026-01-05T15:19:20.431675",
       "outputs": {
         "production_plan": {
           "Center": {
@@ -60,7 +60,7 @@
       }
     },
     "Purchasing": {
-      "timestamp": "2026-01-04T20:04:09.818477",
+      "timestamp": "2026-01-05T15:19:20.593686",
       "outputs": {
         "material_orders": {},
         "supplier_spend": 0,
@@ -68,21 +68,21 @@
       }
     },
     "CLO": {
-      "timestamp": "2026-01-04T20:04:10.019025",
+      "timestamp": "2026-01-05T15:19:20.774225",
       "outputs": {
         "shipping_schedule": {},
         "logistics_costs": 0,
         "inventory_by_zone": {
-          "Center": 0.0,
-          "West": 0.0,
-          "North": 0.0,
-          "East": 0.0,
-          "South": 0.0
+          "Center": 2559,
+          "West": 599,
+          "North": 2147,
+          "East": 0,
+          "South": 0
         }
       }
     },
     "CPO": {
-      "timestamp": "2026-01-04T20:04:10.230444",
+      "timestamp": "2026-01-05T15:19:20.991116",
       "outputs": {
         "workforce_headcount": {
           "Center": 0,
@@ -96,7 +96,7 @@
       }
     },
     "ESG": {
-      "timestamp": "2026-01-04T20:04:10.451291",
+      "timestamp": "2026-01-05T15:19:21.202344",
       "outputs": {
         "co2_emissions": 0,
         "abatement_investment": 0,
@@ -104,13 +104,13 @@
       }
     },
     "CFO": {
-      "timestamp": "2026-01-04T20:04:10.525027",
+      "timestamp": "2026-01-05T15:19:21.315621",
       "outputs": {
         "cash_flow_projection": {
           "final_cash": 500000,
           "tax_payments": 50000
         },
-        "debt_levels": 0,
+        "debt_levels": 1500000,
         "liquidity_status": "OK"
       }
     }

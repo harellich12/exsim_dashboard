@@ -313,7 +313,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # TAB 1: ROUTE_CONFIG
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "ROUTE_CONFIG"
+    ws1.title = "ROUTE CONFIG"
     
     ws1['A1'] = "ROUTE CONFIGURATION - Transport Physics"
     ws1['A1'].font = title_font
@@ -394,7 +394,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 1.5: LOGISTICS_DATA (Hidden Database)
     # =========================================================================
-    ws_data = wb.create_sheet("LOGISTICS_DATA")
+    ws_data = wb.create_sheet("LOGISTICS DATA")
     # Hidden? ws_data.sheet_state = 'hidden' # Keeping visible for verification
     
     ws_data['A1'] = "Route Cost Database (Generated from Case Parameters)"
@@ -452,7 +452,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 1.6: ROUTE_OPTIMIZER
     # =========================================================================
-    ws_opt = wb.create_sheet("ROUTE_OPTIMIZER")
+    ws_opt = wb.create_sheet("ROUTE OPTIMIZER")
     ws_opt['A1'] = "ROUTE OPTIMIZER & MATRIX"
     ws_opt['A1'].font = title_font
     
@@ -545,7 +545,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 2: INVENTORY_TETRIS
     # =========================================================================
-    ws2 = wb.create_sheet("INVENTORY_TETRIS")
+    ws2 = wb.create_sheet("INVENTORY TETRIS")
     
     ws2['A1'] = "INVENTORY TETRIS - Zone-by-Zone Balance"
     ws2['A1'].font = title_font
@@ -782,7 +782,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 3: SHIPMENT_BUILDER
     # =========================================================================
-    ws3 = wb.create_sheet("SHIPMENT_BUILDER")
+    ws3 = wb.create_sheet("SHIPMENT BUILDER")
     
     ws3['A1'] = "SHIPMENT BUILDER - Plan Your Transfers"
     ws3['A1'].font = title_font
@@ -903,7 +903,7 @@ def create_logistics_dashboard(inventory_data, template_data, cost_data, intelli
     # =========================================================================
     # TAB 4: UPLOAD_READY_LOGISTICS
     # =========================================================================
-    ws4 = wb.create_sheet("UPLOAD_READY_LOGISTICS")
+    ws4 = wb.create_sheet("UPLOAD READY LOGISTICS")
     
     ws4['A1'] = "LOGISTICS DECISIONS - ExSim Upload Format"
     ws4['A1'].font = title_font

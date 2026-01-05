@@ -463,7 +463,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # TAB 1: LIQUIDITY_MONITOR
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "LIQUIDITY_MONITOR"
+    ws1.title = "LIQUIDITY MONITOR"
     
     ws1['A1'] = "LIQUIDITY MONITOR - Cash Flow Engine"
     ws1['A1'].font = title_font
@@ -762,7 +762,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 2: PROFIT_CONTROL
     # =========================================================================
-    ws2 = wb.create_sheet("PROFIT_CONTROL")
+    ws2 = wb.create_sheet("PROFIT CONTROL")
     
     ws2['A1'] = "PROFIT CONTROL - Income Statement Forecast vs Actuals"
     ws2['A1'].font = title_font
@@ -959,7 +959,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 3: BALANCE_SHEET_HEALTH
     # =========================================================================
-    ws3 = wb.create_sheet("BALANCE_SHEET_HEALTH")
+    ws3 = wb.create_sheet("BALANCE SHEET HEALTH")
     
     ws3['A1'] = "BALANCE SHEET HEALTH - Solvency & Debt Control"
     ws3['A1'].font = title_font
@@ -1103,7 +1103,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 4: DEBT_MANAGER
     # =========================================================================
-    ws4 = wb.create_sheet("DEBT_MANAGER")
+    ws4 = wb.create_sheet("DEBT MANAGER")
     
     ws4['A1'] = "DEBT MANAGER - Mortgage Calculator"
     ws4['A1'].font = title_font
@@ -1199,7 +1199,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 5: UPLOAD_READY_FINANCE
     # =========================================================================
-    ws5 = wb.create_sheet("UPLOAD_READY_FINANCE")
+    ws5 = wb.create_sheet("UPLOAD READY FINANCE")
     
     ws5['A1'] = "FINANCE DECISIONS - ExSim Upload Format"
     ws5['A1'].font = title_font
@@ -1282,7 +1282,7 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     # =========================================================================
     # TAB 6: CROSS_REFERENCE (Upstream Dashboard KPIs)
     # =========================================================================
-    ws6 = wb.create_sheet("CROSS_REFERENCE")
+    ws6 = wb.create_sheet("CROSS REFERENCE")
     
     ws6['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Dashboard KPIs"
     ws6['A1'].font = title_font

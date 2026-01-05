@@ -130,44 +130,90 @@ def render_bulk_upload():
     
     st.markdown("---")
     
-    # TEST MODE - Load Mock Data
+    # TEST MODE - Load Mock Data / Generate Random Data
     with st.expander("🧪 Test Mode - Load Mock Data", expanded=False):
         st.markdown("""
-        **For testing purposes only.** This will load pre-generated mock data 
-        to populate all dashboards without requiring actual ExSim exports.
+        **For testing purposes only.** Choose one of the options below to populate 
+        all dashboards without requiring actual ExSim exports.
         """)
         
-        if st.button("🔬 Load Test Data", type="secondary", key="load_test_data"):
-            import os
-            from pathlib import Path
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("##### 📁 Load Pre-Generated Files")
+            st.caption("Loads mock Excel files from disk")
+            if st.button("🔬 Load Test Data", type="secondary", key="load_test_data"):
+                import os
+                from pathlib import Path
+                
+                # Find the mock_reports folder
+                base_path = Path(__file__).parent.parent.parent / "test_data" / "mock_reports"
+                
+                if not base_path.exists():
+                    st.error(f"❌ Mock data folder not found: {base_path}")
+                else:
+                    test_results = {'loaded': [], 'errors': []}
+                    
+                    for filename, config in EXPECTED_FILES.items():
+                        file_path = base_path / filename
+                        if file_path.exists():
+                            try:
+                                data = config['loader'](str(file_path))
+                                if data:
+                                    set_state(config['state_key'], data)
+                                    test_results['loaded'].append(filename)
+                            except Exception as e:
+                                test_results['errors'].append(f"{filename}: {str(e)}")
+                    
+                    if test_results['loaded']:
+                        reset_tab_states()
+                        st.success(f"✅ Loaded {len(test_results['loaded'])} test files!")
+                        st.balloons()
+                        
+                    if test_results['errors']:
+                        for err in test_results['errors']:
+                            st.warning(f"⚠️ {err}")
+        
+        with col2:
+            st.markdown("##### 🎲 Generate Random Data")
+            st.caption("Creates fresh random data in-memory")
             
-            # Find the mock_reports folder
-            base_path = Path(__file__).parent.parent.parent / "test_data" / "mock_reports"
-            
-            if not base_path.exists():
-                st.error(f"❌ Mock data folder not found: {base_path}")
+            # Optional seed input for reproducibility
+            use_seed = st.checkbox("Use specific seed", value=False, key="use_random_seed")
+            if use_seed:
+                random_seed = st.number_input(
+                    "Random seed", 
+                    min_value=0, 
+                    max_value=999999, 
+                    value=42, 
+                    key="random_seed_input"
+                )
             else:
-                test_results = {'loaded': [], 'errors': []}
-                
-                for filename, config in EXPECTED_FILES.items():
-                    file_path = base_path / filename
-                    if file_path.exists():
-                        try:
-                            data = config['loader'](str(file_path))
-                            if data:
-                                set_state(config['state_key'], data)
-                                test_results['loaded'].append(filename)
-                        except Exception as e:
-                            test_results['errors'].append(f"{filename}: {str(e)}")
-                
-                if test_results['loaded']:
+                random_seed = None
+            
+            if st.button("🎲 Generate Random Data", type="secondary", key="generate_random_data"):
+                try:
+                    from utils.random_data_generator import generate_all_random_data
+                    
+                    # Generate all random data
+                    generated = generate_all_random_data(seed=random_seed)
+                    
+                    # Load into session state
+                    loaded_count = 0
+                    for state_key, data in generated.items():
+                        if data:
+                            set_state(state_key, data)
+                            loaded_count += 1
+                    
+                    # Reset tab states to force refresh
                     reset_tab_states()
-                    st.success(f"✅ Loaded {len(test_results['loaded'])} test files!")
+                    
+                    seed_msg = f" (seed: {random_seed})" if random_seed is not None else " (random seed)"
+                    st.success(f"✅ Generated {loaded_count} data sets{seed_msg}!")
                     st.balloons()
                     
-                if test_results['errors']:
-                    for err in test_results['errors']:
-                        st.warning(f"⚠️ {err}")
+                except Exception as e:
+                    st.error(f"❌ Error generating random data: {str(e)}")
     
     st.markdown("---")
     

@@ -278,7 +278,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     # TAB 1: WORKFORCE_PLANNING
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "WORKFORCE_PLANNING"
+    ws1.title = "WORKFORCE PLANNING"
     
     ws1['A1'] = "WORKFORCE PLANNING - Headcount Management"
     ws1['A1'].font = title_font
@@ -500,7 +500,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     # =========================================================================
     # TAB 2: COMPENSATION_STRATEGY
     # =========================================================================
-    ws2 = wb.create_sheet("COMPENSATION_STRATEGY")
+    ws2 = wb.create_sheet("COMPENSATION STRATEGY")
     
     ws2['A1'] = "COMPENSATION STRATEGY - Salaries & Benefits"
     ws2['A1'].font = title_font
@@ -691,7 +691,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     # =========================================================================
     # TAB 3: LABOR_COST_ANALYSIS
     # =========================================================================
-    ws3 = wb.create_sheet("LABOR_COST_ANALYSIS")
+    ws3 = wb.create_sheet("LABOR COST ANALYSIS")
     
     ws3['A1'] = "LABOR COST ANALYSIS - Total People Expense for Finance"
     ws3['A1'].font = title_font
@@ -932,7 +932,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     # =========================================================================
     # TAB 4: UPLOAD_READY_PEOPLE
     # =========================================================================
-    ws4 = wb.create_sheet("UPLOAD_READY_PEOPLE")
+    ws4 = wb.create_sheet("UPLOAD READY PEOPLE")
     
     ws4['A1'] = "PEOPLE DECISIONS - ExSim Upload Format"
     ws4['A1'].font = title_font
@@ -984,7 +984,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     # =========================================================================
     # TAB 4: CROSS_REFERENCE (Upstream Data)
     # =========================================================================
-    ws4 = wb.create_sheet("CROSS_REFERENCE")
+    ws4 = wb.create_sheet("CROSS REFERENCE")
     
     ws4['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
     ws4['A1'].font = title_font

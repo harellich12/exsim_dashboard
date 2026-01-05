@@ -197,7 +197,7 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     # TAB 1: IMPACT_CONFIG
     # =========================================================================
     ws1 = wb.active
-    ws1.title = "IMPACT_CONFIG"
+    ws1.title = "IMPACT CONFIG"
     
     ws1['A1'] = "IMPACT CONFIGURATION - Initiative Specifications"
     ws1['A1'].font = title_font
@@ -269,7 +269,7 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     # =========================================================================
     # TAB 2: STRATEGY_SELECTOR
     # =========================================================================
-    ws2 = wb.create_sheet("STRATEGY_SELECTOR")
+    ws2 = wb.create_sheet("STRATEGY SELECTOR")
     
     ws2['A1'] = "STRATEGY SELECTOR - CO2 Abatement Calculator"
     ws2['A1'].font = title_font
@@ -584,7 +584,7 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     # =========================================================================
     # TAB 3: UPLOAD_READY_ESG
     # =========================================================================
-    ws3 = wb.create_sheet("UPLOAD_READY_ESG")
+    ws3 = wb.create_sheet("UPLOAD READY ESG")
     
     ws3['A1'] = "UPLOAD READY DATA - DO NOT EDIT"
     ws3['A1'].font = Font(bold=True, color="FF0000")
@@ -630,7 +630,7 @@ def create_esg_dashboard(esg_data, production_data, output_buffer=None, decision
     # =========================================================================
     # TAB 5: CROSS_REFERENCE (Upstream Data)
     # =========================================================================
-    ws5 = wb.create_sheet("CROSS_REFERENCE")
+    ws5 = wb.create_sheet("CROSS REFERENCE")
     
     ws5['A1'] = "CROSS-REFERENCE SUMMARY - Upstream Support"
     ws5['A1'].font = Font(bold=True, size=14, color="2F5496")

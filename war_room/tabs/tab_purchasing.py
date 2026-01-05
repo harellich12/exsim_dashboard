@@ -44,7 +44,7 @@ def init_purchasing_state():
     if 'purchasing_initialized' not in st.session_state:
         st.session_state.purchasing_initialized = True
         
-        raw_data = get_state('raw_materials_data')
+        raw_data = get_state('materials_data')
         
         # Supplier configuration
         supplier_data = [
@@ -470,7 +470,7 @@ def render_purchasing_tab():
             st.error(f"Export: {e}")
     
     # Data status
-    raw_data = get_state('raw_materials_data')
+    raw_data = get_state('materials_data')
     if raw_data:
         st.success("✅ Raw Materials data loaded")
     else:
