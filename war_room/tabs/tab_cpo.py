@@ -280,7 +280,18 @@ def render_compensation_strategy():
                        valueFormatter="'$' + value.toFixed(2)", cellStyle=REFERENCE_STYLE)
     gb.configure_column('New_Salary', headerName='New Salary', editable=True, width=110, type=['numericColumn'],
                        valueFormatter="'$' + value.toFixed(2)", cellStyle=salary_js)
-    gb.configure_column('Strike_Risk', headerName='Strike Risk', editable=False, width=140, cellStyle=strike_js)
+    risk_getter = JsCode("""
+        function(params) {
+            if (params.data.New_Salary < params.data.Min_Salary) {
+                return '🔴 STRIKE RISK!';
+            }
+            return '🟢 Safe';
+        }
+    """)
+    
+    gb.configure_column('Strike_Risk', headerName='Strike Risk', editable=False, width=140, 
+                       valueGetter=risk_getter,
+                       cellStyle=strike_js)
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
     grid_response = AgGrid(
