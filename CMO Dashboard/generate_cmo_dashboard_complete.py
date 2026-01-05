@@ -21,12 +21,18 @@ import re
 import sys
 
 # Add parent directory to path to import case_parameters
+# Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
     from case_parameters import MARKET, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     MARKET = {}
+    COMMON = {}  # Add missing COMMON init
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -47,23 +53,7 @@ REQUIRED_FILES = [
     'sales_admin_expenses.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
-
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "CMO_Dashboard_Complete.xlsx"
+OUTPUT_FILE = OUTPUT_DIR / "CMO_Dashboard_Complete.xlsx"
 
 # Use centralized constants from case_parameters
 MY_COMPANY = COMMON.get('MY_COMPANY', "Company 3")
@@ -247,7 +237,7 @@ def load_market_report(filepath):
     return data
 
 
-def load_innovation_template(filepath):
+def load_innovation_features(filepath):
     """Load innovation features dynamically."""
     df = load_excel_file(filepath, sheet_name='Innovation')
     
@@ -331,7 +321,7 @@ def load_marketing_template(filepath):
     return template
 
 
-def load_sales_data(filepath):
+def load_sales_admin_expenses(filepath):
     """Load sales and expenses data from website export format."""
     df = load_excel_file(filepath)
     
@@ -387,7 +377,7 @@ def load_sales_data(filepath):
     return data
 
 
-def load_inventory_data(filepath):
+def load_finished_goods_inventory(filepath):
     """Load inventory to detect stockouts from website export format."""
     df = load_excel_file(filepath)
     
@@ -609,16 +599,18 @@ def create_complete_dashboard(market_data, innovation_features, marketing_templa
             zone_pop = pop_data.get(zone, {}).get(segment, 10000) # Default 10k if missing
             est_units_sold = zone_pop * (market_share / 100)
             
-            my_awareness = zone_data.get('my_awareness', DEFAULT_AWARENESS)
-            my_awareness = zone_data.get('my_awareness', DEFAULT_AWARENESS)
-            comp_awareness = zone_seg.get('comp_avg_awareness', DEFAULT_AWARENESS)
+            # FIX: Prefer segment-specific data over zone-level data (matching UI behavior)
+            my_awareness = zone_seg.get('my_awareness', zone_data.get('my_awareness', DEFAULT_AWARENESS))
+            comp_awareness = zone_seg.get('comp_avg_awareness', zone_data.get('comp_avg_awareness', DEFAULT_AWARENESS))
             awareness_gap = my_awareness - comp_awareness
             
-            my_price = zone_data.get('my_price', DEFAULT_PRICE)
-            comp_price = zone_data.get('comp_avg_price', DEFAULT_PRICE)
+            my_price = zone_seg.get('my_price', zone_data.get('my_price', DEFAULT_PRICE))
+            comp_price = zone_seg.get('comp_avg_price', zone_data.get('comp_avg_price', DEFAULT_PRICE))
             price_gap = ((my_price - comp_price) / comp_price * 100) if comp_price > 0 else 0
             
-            attractiveness = zone_data.get('my_attractiveness', DEFAULT_ATTRACTIVENESS)
+            # FIX: Prefer segment-specific attractiveness (matching UI behavior)
+            attractiveness = zone_seg.get('my_attractiveness', zone_data.get('my_attractiveness', DEFAULT_ATTRACTIVENESS))
+
             
             # Allocation flag logic
             # First check for zones with no market presence
@@ -1341,8 +1333,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # Market Report
     market_path = get_data_path("market-report.xlsx")
@@ -1356,10 +1349,10 @@ def main():
     # Innovation Template
     innov_path = get_data_path("Marketing Innovation Decisions.xlsx")
     if innov_path:
-        innovation_features = load_innovation_template(innov_path)
+        innovation_features = load_innovation_features(innov_path)
         print(f"  [OK] Loaded {len(innovation_features)} innovation features")
     else:
-        innovation_features = load_innovation_template(None)
+        innovation_features = load_innovation_features(None)
         print("  [!] Using default innovation features")
     
     # Marketing Template
@@ -1374,20 +1367,20 @@ def main():
     # Sales Data
     sales_path = get_data_path("sales_admin_expenses.xlsx")
     if sales_path:
-        sales_data = load_sales_data(sales_path)
+        sales_data = load_sales_admin_expenses(sales_path)
         print(f"  [OK] Loaded sales data")
     else:
-        sales_data = load_sales_data(None)
+        sales_data = load_sales_admin_expenses(None)
         print("  [!] Using default sales data")
     
     # Inventory
     inv_path = get_data_path("finished_goods_inventory.xlsx")
     if inv_path:
-        inventory_data = load_inventory_data(inv_path)
+        inventory_data = load_finished_goods_inventory(inv_path)
         stockout_status = "STOCKOUT DETECTED" if inventory_data['is_stockout'] else "OK"
         print(f"  [OK] Loaded inventory: {stockout_status}")
     else:
-        inventory_data = load_inventory_data(None)
+        inventory_data = load_finished_goods_inventory(None)
         print("  [!] Using default inventory data")
     
     # NEW: Marketing Intelligence (Unit Economics)

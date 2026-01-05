@@ -106,7 +106,8 @@ def sync_from_market_data():
         return
     
     market_data = get_state('market_data')
-    sales_data = get_state('sales_data')
+    # FIX: Bulk upload stores as 'sales_admin_data', not 'sales_data'
+    sales_data = get_state('sales_admin_data')
     finished_goods_data = get_state('finished_goods_data')
     
     for idx, zone in enumerate(ZONES):
@@ -763,7 +764,8 @@ def render_cmo_tab():
     
     # Show data source status
     market_data = get_state('market_data')
-    sales_data = get_state('sales_data')
+    # FIX: Bulk upload stores as 'sales_admin_data', not 'sales_data'
+    sales_data = get_state('sales_admin_data')
     finished_goods_data = get_state('finished_goods_data')
     
     data_status = []

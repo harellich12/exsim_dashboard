@@ -21,10 +21,14 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 try:
     from case_parameters import FINANCIAL, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     FINANCIAL = {}
     COMMON = {}
+    # Fallback for config if not found (though it should be providing we are in right structure)
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -48,23 +52,7 @@ REQUIRED_FILES = [
     'Finance Decisions.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
-
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "Finance_Dashboard_Final.xlsx"
+OUTPUT_FILE = OUTPUT_DIR / "Finance_Dashboard_Final.xlsx"
 
 FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))  # From centralized config
 
@@ -1345,14 +1333,30 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     row += 1
     
     prod_plan = prod_data_shared.get('production_plan', {}) if prod_data_shared else {}
-    total_production = sum(prod_plan.values()) if prod_plan else 0
+    
+    # Handle dict values (new format) or int values (legacy)
+    total_production = 0
+    if prod_plan:
+        for v in prod_plan.values():
+            if isinstance(v, dict):
+                total_production += v.get('Target', 0)
+            else:
+                total_production += v
+
     unit_costs = prod_data_shared.get('unit_costs', {}) if prod_data_shared else {}
     avg_cost = sum(unit_costs.values()) / len(unit_costs) if unit_costs else 0
     
+    # Handle capacity_utilization dict
+    cap_util = prod_data_shared.get('capacity_utilization', 0) if prod_data_shared else 0
+    if isinstance(cap_util, dict):
+        cap_util_val = cap_util.get('mean', 0)
+    else:
+        cap_util_val = cap_util
+
     prod_metrics = [
         ("Total Production", total_production, "#,##0"),
         ("Avg Unit Cost", avg_cost, "$#,##0.00"),
-        ("Utilization", prod_data_shared.get('capacity_utilization', 0) if prod_data_shared else 0, "0.0%"),
+        ("Utilization", cap_util_val, "0.0%"),
     ]
     for label, value, fmt in prod_metrics:
         ws6.cell(row=row, column=1, value=label).border = thin_border
@@ -1429,8 +1433,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # Initial Cash Flow
     cash_path = get_data_path("initial_cash_flow.xlsx")

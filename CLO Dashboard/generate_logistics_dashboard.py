@@ -18,13 +18,18 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
+# Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
     from case_parameters import LOGISTICS, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     LOGISTICS = {}
     COMMON = {}
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -45,23 +50,7 @@ REQUIRED_FILES = [
     'shipping_costs.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
-
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "Logistics_Dashboard.xlsx"
+OUTPUT_FILE = OUTPUT_DIR / "Logistics_Dashboard.xlsx"
 
 # Use centralized constants from case_parameters
 FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
@@ -985,8 +974,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # Finished Goods Inventory
     inv_path = get_data_path("finished_goods_inventory.xlsx")

@@ -1,12 +1,12 @@
 {
   "metadata": {
-    "created": "2026-01-04T16:32:48.523227",
-    "last_updated": "2026-01-04T17:17:53.494601",
+    "created": "2026-01-04T17:48:51.449955",
+    "last_updated": "2026-01-04T20:04:10.525027",
     "version": "1.0"
   },
   "dashboards": {
     "CMO": {
-      "timestamp": "2026-01-04T16:32:48.537437",
+      "timestamp": "2026-01-04T20:04:09.407559",
       "outputs": {
         "demand_forecast": {
           "Center": 0,
@@ -26,8 +26,49 @@
         "innovation_costs": 0
       }
     },
+    "Production": {
+      "timestamp": "2026-01-04T20:04:09.625300",
+      "outputs": {
+        "production_plan": {
+          "Center": {
+            "Target": 0
+          },
+          "West": {
+            "Target": 0
+          },
+          "North": {
+            "Target": 0
+          },
+          "East": {
+            "Target": 0
+          },
+          "South": {
+            "Target": 0
+          }
+        },
+        "capacity_utilization": {
+          "mean": 0.85
+        },
+        "overtime_hours": 0,
+        "unit_costs": {
+          "Center": 40,
+          "West": 40,
+          "North": 40,
+          "East": 40,
+          "South": 40
+        }
+      }
+    },
+    "Purchasing": {
+      "timestamp": "2026-01-04T20:04:09.818477",
+      "outputs": {
+        "material_orders": {},
+        "supplier_spend": 0,
+        "lead_time_schedule": {}
+      }
+    },
     "CLO": {
-      "timestamp": "2026-01-04T17:17:53.205113",
+      "timestamp": "2026-01-04T20:04:10.019025",
       "outputs": {
         "shipping_schedule": {},
         "logistics_costs": 0,
@@ -40,8 +81,30 @@
         }
       }
     },
+    "CPO": {
+      "timestamp": "2026-01-04T20:04:10.230444",
+      "outputs": {
+        "workforce_headcount": {
+          "Center": 0,
+          "West": 0,
+          "North": 0,
+          "East": 0,
+          "South": 0
+        },
+        "payroll_forecast": 0,
+        "hiring_costs": 0
+      }
+    },
+    "ESG": {
+      "timestamp": "2026-01-04T20:04:10.451291",
+      "outputs": {
+        "co2_emissions": 0,
+        "abatement_investment": 0,
+        "tax_liability": 0
+      }
+    },
     "CFO": {
-      "timestamp": "2026-01-04T17:17:53.494601",
+      "timestamp": "2026-01-04T20:04:10.525027",
       "outputs": {
         "cash_flow_projection": {
           "final_cash": 500000,

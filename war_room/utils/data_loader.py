@@ -321,11 +321,12 @@ def load_balance_statements(file) -> Dict[str, Any]:
         return {'net_sales': 0, 'cogs': 0, 'net_profit': 0, 'total_assets': 0, 'total_liabilities': 0, 'equity': 0, 'raw_df': None}
 
 
+
 def load_esg_report(file) -> Dict[str, Any]:
     """Load esg_report.xlsx or ESG.xlsx - ESG input."""
     try:
         df = pd.read_excel(file, header=None)
-        data = {'emissions': 0, 'energy': 0, 'tax_rate': 30, 'raw_df': df}
+        data = {'emissions': 0, 'energy': 0, 'energy_consumption': 0, 'tax_rate': 30, 'raw_df': df}
         
         for idx, row in df.iterrows():
             first_val = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ''
@@ -335,13 +336,14 @@ def load_esg_report(file) -> Dict[str, Any]:
                 data['emissions'] = val
             elif 'energy' in first_val:
                 data['energy'] = val
+                data['energy_consumption'] = val
             elif 'tax' in first_val and 'rate' in first_val:
                 data['tax_rate'] = val
         
         return data
     except Exception as e:
         st.warning(f"Error loading ESG report: {e}")
-        return {'emissions': 0, 'energy': 0, 'tax_rate': 30, 'raw_df': None}
+        return {'emissions': 0, 'energy': 0, 'energy_consumption': 0, 'tax_rate': 30, 'raw_df': None}
 
 
 def load_production_data(file) -> Dict[str, Any]:
@@ -372,23 +374,66 @@ def load_production_data(file) -> Dict[str, Any]:
 
 def load_sales_admin_expenses(file) -> Dict[str, Any]:
     """Load sales_admin_expenses.xlsx - CFO input for S&A expenses."""
+    ZONES = ['Center', 'West', 'North', 'East', 'South']
     try:
         df = pd.read_excel(file, header=None)
-        data = {'total_expenses': 0, 'categories': {}, 'raw_df': df}
+        data = {
+            'total_expenses': 0, 
+            'categories': {}, 
+            'raw_df': df,
+            # Match CMO structure requirements:
+            'by_zone': {zone: {'units': 0, 'price': 0} for zone in ZONES},
+            'totals': {'units': 0, 'tv_spend': 0, 'radio_spend': 0, 'salespeople_cost': 0}
+        }
+        
+        in_sales_section = False
+        in_expense_section = False
         
         for idx, row in df.iterrows():
             first_val = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ''
             val = parse_numeric(row.iloc[1]) if len(row) > 1 else 0
             
+            # Detect sections
+            if 'sales' in first_val and 'expense' not in first_val and 'admin' not in first_val:
+                in_sales_section = True
+                in_expense_section = False
+            elif 'expense' in first_val or 'admin' in first_val:
+                in_sales_section = False
+                in_expense_section = True
+                
+            if in_sales_section:
+                for zone in ZONES:
+                    if first_val == zone.lower():
+                        # Format: Region, Brand, Units, Local Price, ...
+                        units = parse_numeric(row.iloc[2]) if len(row) > 2 else 0
+                        price = parse_numeric(row.iloc[3]) if len(row) > 3 else 0
+                        if units > 0:
+                            data['by_zone'][zone]['units'] = units
+                            data['totals']['units'] += units
+                        if price > 0:
+                            data['by_zone'][zone]['price'] = price
+                            
             if 'total' in first_val and ('expense' in first_val or 's&a' in first_val):
                 data['total_expenses'] = val
-            elif first_val and val != 0:
+            elif in_expense_section and first_val and val != 0:
                 data['categories'][first_val] = val
+                
+                # Update totals for CMO
+                if 'tv' in first_val and 'advert' in first_val:
+                    data['totals']['tv_spend'] = val
+                elif 'radio' in first_val and 'advert' in first_val:
+                    data['totals']['radio_spend'] = val
+                elif 'salespeople' in first_val and 'salar' in first_val:
+                    data['totals']['salespeople_cost'] = val
         
         return data
     except Exception as e:
         st.warning(f"Error loading sales admin expenses: {e}")
-        return {'total_expenses': 0, 'categories': {}, 'raw_df': None}
+        return {
+            'total_expenses': 0, 'categories': {}, 'raw_df': None,
+            'by_zone': {zone: {'units': 0, 'price': 0} for zone in ZONES},
+            'totals': {'units': 0, 'tv_spend': 0, 'radio_spend': 0, 'salespeople_cost': 0}
+        }
 
 
 def load_subperiod_cash_flow(file) -> Dict[str, Any]:

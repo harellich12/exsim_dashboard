@@ -21,10 +21,14 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 try:
     from case_parameters import PRODUCTION, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     PRODUCTION = {}
     COMMON = {}
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -48,23 +52,7 @@ REQUIRED_FILES = [
     'Production Decisions.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
-
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "Production_Dashboard_Zones.xlsx"
+OUTPUT_FILE = OUTPUT_DIR / "Production_Dashboard_Zones.xlsx"
 
 # Use centralized constants from case_parameters
 FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
@@ -964,8 +952,9 @@ def main():
     print("=" * 50)
 
     print("\n[*] Loading zone-specific data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
 
     # Raw Materials by Zone
     materials_path = get_data_path("raw_materials.xlsx")
@@ -1026,8 +1015,8 @@ def main():
         total_production = sum(machines_data.get(z, {}).get('machines', 0) * 200 for z in ZONES)
         total_workers = sum(workers_data.get(z, {}).get('workers', 0) for z in ZONES)
         export_dashboard_data('Production', {
-            'production_plan': {zone: machines_data.get(zone, {}).get('machines', 0) * 200 for zone in ZONES},
-            'capacity_utilization': 0.85,  # Placeholder - would be calculated from actuals
+            'production_plan': {zone: {'Target': machines_data.get(zone, {}).get('machines', 0) * 200} for zone in ZONES},
+            'capacity_utilization': {'mean': 0.85},  # Placeholder - would be calculated from actuals
             'overtime_hours': 0,  # Calculated from dashboard inputs
             'unit_costs': {zone: 40 for zone in ZONES}  # Base unit cost
         })

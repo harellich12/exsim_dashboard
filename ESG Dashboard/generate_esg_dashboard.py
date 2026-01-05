@@ -18,13 +18,18 @@ import warnings
 import sys
 
 # Add parent directory to path to import case_parameters
+# Add parent directory to path to import case_parameters
 sys.path.append(str(Path(__file__).parent.parent))
 try:
     from case_parameters import ESG as ESG_PARAMS, COMMON
+    from config import get_data_path, OUTPUT_DIR
 except ImportError:
-    print("Warning: Could not import case_parameters.py. Using defaults.")
+    print("Warning: Could not import case_parameters.py or config.py. Using defaults.")
     ESG_PARAMS = {}
     COMMON = {}
+    # Fallback for config
+    OUTPUT_DIR = Path(__file__).parent
+    def get_data_path(f): return Path(f)
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -45,23 +50,7 @@ REQUIRED_FILES = [
     'ESG Decision.xlsx'
 ]
 
-# Data source: Primary = Reports folder at project root, Fallback = local /data
-# Can be overridden by EXSIM_REPORTS_PATH environment variable for testing
-import os
-REPORTS_FOLDER = Path(os.environ.get('EXSIM_REPORTS_PATH', Path(__file__).parent.parent / "Reports"))
-LOCAL_DATA_FOLDER = Path(__file__).parent / "data"
-
-def get_data_path(filename):
-    """Get data file path, checking Reports folder first, then local fallback."""
-    primary = REPORTS_FOLDER / filename
-    fallback = LOCAL_DATA_FOLDER / filename
-    if primary.exists():
-        return primary
-    elif fallback.exists():
-        return fallback
-    return None
-
-OUTPUT_FILE = "ESG_Dashboard.xlsx"
+OUTPUT_FILE = OUTPUT_DIR / "ESG_Dashboard.xlsx"
 
 # Default initiative specifications
 DEFAULT_INITIATIVES = {
@@ -713,8 +702,9 @@ def main():
     print("=" * 50)
     
     print("\n[*] Loading data files...")
-    print(f"    Primary source: {REPORTS_FOLDER}")
-    print(f"    Fallback source: {LOCAL_DATA_FOLDER}")
+    from config import REPORTS_DIR, DATA_DIR
+    print(f"    Primary source: {REPORTS_DIR}")
+    print(f"    Fallback source: {DATA_DIR}")
     
     # ESG Report
     esg_path = get_data_path("esg_report.xlsx")
