@@ -384,6 +384,17 @@ def render_profit_control():
     CALC_STYLE = {'backgroundColor': '#E8F5E9', 'color': '#2E7D32'}
     REF_STYLE = {'backgroundColor': '#F5F5F5', 'color': '#616161'}
     
+    # JS Logic for Variance
+    # Variance = (This_Round - Last_Round) / Last_Round
+    variance_getter = JsCode("""
+        function(params) {
+            let last = Number(params.data.Last_Round);
+            let this_round = Number(params.data.This_Round);
+            if (last === 0) return 0;
+            return (this_round - last) / last;
+        }
+    """)
+
     variance_js = JsCode("""
         function(params) {
             if (Math.abs(params.value) > 0.2) {
@@ -400,7 +411,9 @@ def render_profit_control():
     gb.configure_column('This_Round', headerName='This Round', editable=True, width=150,
                        valueFormatter="'$' + value.toLocaleString()", cellStyle=EDITABLE_STYLE)
     gb.configure_column('Variance', editable=False, width=120,
-                       valueFormatter="(value * 100).toFixed(1) + '%'", cellStyle=variance_js)
+                       valueFormatter="(value * 100).toFixed(1) + '%'", 
+                       cellStyle=variance_js,
+                       valueGetter=variance_getter)
     
     AgGrid(
         income_data,
