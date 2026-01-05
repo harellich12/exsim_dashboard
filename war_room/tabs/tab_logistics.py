@@ -723,7 +723,11 @@ def render_cross_reference():
         st.markdown("### 📦 Purchasing (Incoming Stock)")
         st.info("Goods arriving that need warehousing.")
         
-        spend = purch_data.get('supplier_spend', 0)
+        raw_spend = purch_data.get('supplier_spend', 0)
+        try:
+            spend = float(raw_spend)
+        except (ValueError, TypeError):
+            spend = 0.0
         
         st.metric("Total Supplier Spend", f"${spend:,.0f}")
         
