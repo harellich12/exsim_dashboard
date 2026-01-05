@@ -1,37 +1,37 @@
 {
   "metadata": {
     "created": "2026-01-04T17:48:51.449955",
-    "last_updated": "2026-01-05T16:22:52.346391",
+    "last_updated": "2026-01-05T22:03:38.708108",
     "version": "1.0"
   },
   "dashboards": {
     "CMO": {
-      "timestamp": "2026-01-05T16:15:17.462093",
+      "timestamp": "2026-01-05T22:03:36.968212",
       "outputs": {
         "demand_forecast": {
-          "Center": 0,
-          "West": 0,
-          "North": 0,
-          "East": 0,
-          "South": 0
+          "Center": 1000,
+          "West": 900,
+          "North": 800,
+          "East": 850,
+          "South": 950
         },
-        "marketing_spend": 0,
+        "marketing_spend": 73500.0,
         "pricing": {
-          "Center": 68.0,
-          "West": 68.0,
-          "North": 91.0,
-          "East": 0,
-          "South": 0
+          "Center": 150,
+          "West": 145,
+          "North": 148,
+          "East": 152,
+          "South": 147
         },
-        "innovation_costs": 0
+        "innovation_costs": 0.0
       }
     },
     "Production": {
-      "timestamp": "2026-01-05T16:15:18.420703",
+      "timestamp": "2026-01-05T22:03:37.522429",
       "outputs": {
         "production_plan": {
           "Center": {
-            "Target": 31200
+            "Target": 0
           },
           "West": {
             "Target": 0
@@ -60,37 +60,100 @@
       }
     },
     "Purchasing": {
-      "timestamp": "2026-01-05T16:15:19.355003",
+      "timestamp": "2026-01-05T22:03:37.974740",
       "outputs": {
-        "material_orders": "See MRP Engine",
-        "supplier_spend": 2940.0,
-        "lead_time_schedule": "Standard"
+        "supplier_spend": "0",
+        "inventory_levels": {
+          "projected_closing": "0"
+        }
       }
     },
     "CLO": {
-      "timestamp": "2026-01-05T16:15:20.411707",
+      "timestamp": "2026-01-05T22:03:38.251870",
       "outputs": {
-        "shipping_schedule": "See Shipment Builder",
-        "logistics_costs": 0,
-        "inventory_by_zone": "See Inventory Tetris"
+        "shipping_schedule": [
+          {
+            "ID": 1,
+            "Order_FN": 1,
+            "Origin": "Center",
+            "Destination": "West",
+            "Material": "Electroclean",
+            "Mode": "Truck",
+            "Quantity": 0,
+            "Lead_Time": 1,
+            "Arrival_FN": 2
+          },
+          {
+            "ID": 2,
+            "Order_FN": 1,
+            "Origin": "Center",
+            "Destination": "West",
+            "Material": "Electroclean",
+            "Mode": "Truck",
+            "Quantity": 0,
+            "Lead_Time": 1,
+            "Arrival_FN": 2
+          },
+          {
+            "ID": 3,
+            "Order_FN": 1,
+            "Origin": "Center",
+            "Destination": "West",
+            "Material": "Electroclean",
+            "Mode": "Truck",
+            "Quantity": 0,
+            "Lead_Time": 1,
+            "Arrival_FN": 2
+          },
+          {
+            "ID": 4,
+            "Order_FN": 1,
+            "Origin": "Center",
+            "Destination": "West",
+            "Material": "Electroclean",
+            "Mode": "Truck",
+            "Quantity": 0,
+            "Lead_Time": 1,
+            "Arrival_FN": 2
+          },
+          {
+            "ID": 5,
+            "Order_FN": 1,
+            "Origin": "Center",
+            "Destination": "West",
+            "Material": "Electroclean",
+            "Mode": "Truck",
+            "Quantity": 0,
+            "Lead_Time": 1,
+            "Arrival_FN": 2
+          }
+        ],
+        "logistics_costs": "0",
+        "inventory_by_zone": {
+          "Center": 500,
+          "West": 500,
+          "North": 500,
+          "East": 500,
+          "South": 500
+        }
       }
     },
     "CPO": {
-      "timestamp": "2026-01-05T16:22:52.346391",
+      "timestamp": "2026-01-05T22:03:38.268029",
       "outputs": {
         "workforce_headcount": {
-          "Center": 219,
-          "West": 71,
+          "Center": 0,
+          "West": 0,
           "North": 0,
           "East": 0,
           "South": 0
         },
-        "payroll_forecast": 377000,
+        "payroll_forecast": 0,
         "hiring_costs": 0
       }
     },
     "ESG": {
-      "timestamp": "2026-01-05T16:15:22.191048",
+      "timestamp": "2026-01-05T22:03:38.549311",
       "outputs": {
         "co2_emissions": 0,
         "abatement_investment": 0,
@@ -98,14 +161,14 @@
       }
     },
     "CFO": {
-      "timestamp": "2026-01-05T16:15:23.131589",
+      "timestamp": "2026-01-05T22:03:38.708108",
       "outputs": {
         "cash_flow_projection": {
-          "final_cash": 56421.0,
-          "tax_payments": 28013.0
+          "final_cash": "525000",
+          "tax_payments": 50000
         },
-        "debt_levels": 0,
-        "liquidity_status": "LOW"
+        "debt_levels": 1500000,
+        "liquidity_status": "\ud83d\udfe1 Excess Cash"
       }
     }
   }

@@ -28,7 +28,7 @@ except ImportError:
     COMMON = {}
     # Fallback for config if not found (though it should be providing we are in right structure)
     OUTPUT_DIR = Path(__file__).parent
-    def get_data_path(f): return Path(f)
+    def get_data_path(f, **kwargs): return Path(f) if Path(f).exists() else None
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -1374,9 +1374,10 @@ def create_finance_dashboard(cash_data, balance_data, sa_data, ar_ap_data, templ
     ws6.cell(row=row, column=1).font = Font(bold=True, color="FFFFFF")
     row += 1
     
-    labor_cost = cpo_data_shared.get('payroll_forecast', 0) # Using payroll forecast as proxy for total labor cost
-    material_cost = purch_data_shared.get('supplier_spend', 0)
-    logistics_cost = clo_data_shared.get('logistics_costs', 0)
+    # Cast shared data to float for safe arithmetic
+    labor_cost = float(cpo_data_shared.get('payroll_forecast', 0)) if cpo_data_shared else 0
+    material_cost = float(purch_data_shared.get('supplier_spend', 0)) if purch_data_shared else 0
+    logistics_cost = float(clo_data_shared.get('logistics_costs', 0)) if clo_data_shared else 0
     
     cogs_metrics = [
         ("Labor (CPO)", labor_cost, "$#,##0"),

@@ -37,11 +37,30 @@ except ImportError:
 # Import COMMON parameters
 try:
     from case_parameters import COMMON
+    from config import get_data_path as config_get_data_path
     ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
     FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
 except ImportError:
     ZONES = ['Center', 'West', 'North', 'East', 'South']
     FORTNIGHTS = list(range(1, 9))
+    config_get_data_path = None
+
+
+def safe_get_path(filename):
+    """
+    Safely get file path, returning None if not found.
+    Uses config.get_data_path with required=False if available.
+    """
+    if config_get_data_path:
+        try:
+            return config_get_data_path(filename, required=False)
+        except TypeError:
+            # Old version without required parameter
+            try:
+                return config_get_data_path(filename)
+            except FileNotFoundError:
+                return None
+    return None
 
 
 class ReportBridge:
@@ -181,18 +200,18 @@ class ReportBridge:
         balance_upload = st.session_state.get('balance_data', {})
         
         balance_data = {
-            'net_sales': st.session_state.get('cfo_net_sales', balance_upload.get('net_sales', 0)),
-            'cogs': st.session_state.get('cfo_cogs', balance_upload.get('cogs', 0)),
-            'gross_income': st.session_state.get('cfo_gross_margin', balance_upload.get('gross_income', 0)),
-            'net_profit': st.session_state.get('cfo_net_profit', balance_upload.get('net_profit', 0)),
-            'total_assets': st.session_state.get('cfo_total_assets', balance_upload.get('total_assets', 0)),
-            'total_liabilities': st.session_state.get('cfo_total_liabilities', balance_upload.get('total_liabilities', 0)),
-            'equity': (st.session_state.get('cfo_total_assets', balance_upload.get('total_assets', 0)) 
-                      - st.session_state.get('cfo_total_liabilities', balance_upload.get('total_liabilities', 0))),
-            'retained_earnings': st.session_state.get('cfo_retained_earnings', balance_upload.get('retained_earnings', 0)),
-            'depreciation': balance_upload.get('depreciation', 0),
-            'gross_margin_pct': st.session_state.get('cfo_gross_margin_pct', balance_upload.get('gross_margin_pct', 0.4)),
-            'net_margin_pct': st.session_state.get('cfo_net_margin_pct', balance_upload.get('net_margin_pct', 0.1))
+            'net_sales': float(st.session_state.get('cfo_net_sales', balance_upload.get('net_sales', 0))),
+            'cogs': float(st.session_state.get('cfo_cogs', balance_upload.get('cogs', 0))),
+            'gross_income': float(st.session_state.get('cfo_gross_margin', balance_upload.get('gross_income', 0))),
+            'net_profit': float(st.session_state.get('cfo_net_profit', balance_upload.get('net_profit', 0))),
+            'total_assets': float(st.session_state.get('cfo_total_assets', balance_upload.get('total_assets', 0))),
+            'total_liabilities': float(st.session_state.get('cfo_total_liabilities', balance_upload.get('total_liabilities', 0))),
+            'equity': (float(st.session_state.get('cfo_total_assets', balance_upload.get('total_assets', 0))) 
+                      - float(st.session_state.get('cfo_total_liabilities', balance_upload.get('total_liabilities', 0)))),
+            'retained_earnings': float(st.session_state.get('cfo_retained_earnings', balance_upload.get('retained_earnings', 0))),
+            'depreciation': float(balance_upload.get('depreciation', 0)),
+            'gross_margin_pct': float(st.session_state.get('cfo_gross_margin_pct', balance_upload.get('gross_margin_pct', 0.4))),
+            'net_margin_pct': float(st.session_state.get('cfo_net_margin_pct', balance_upload.get('net_margin_pct', 0.1)))
         }
         
         # Sales Admin Data (from 'sales_admin_expenses.xlsx')
@@ -239,10 +258,10 @@ class ReportBridge:
         # But ReportBridge original logic tried to scrape from `cash_flow_df`. 
         # Better to rely on `ar_ap_upload` which is the source of truth for the Hard Data.
         
-        starting_cash = (cash_data['final_cash'] 
-                        - cash_data['tax_payments'] 
-                        - st.session_state.get('cfo_dividend_payments', 0)
-                        - st.session_state.get('cfo_asset_purchases', 0))
+        starting_cash = (float(cash_data['final_cash']) 
+                        - float(cash_data['tax_payments']) 
+                        - float(st.session_state.get('cfo_dividend_payments', 0))
+                        - float(st.session_state.get('cfo_asset_purchases', 0)))
         
         hard_data = {
             'depreciation': balance_data['depreciation'],
@@ -353,26 +372,26 @@ class ReportBridge:
             # 1. Market Data (Preferred from Session)
             market = st.session_state.get('market_data')
             if not market:
-                market = load_market_report(get_data_path(REQUIRED_FILES[2]))
+                market = load_market_report(safe_get_path(REQUIRED_FILES[2]))
             
             # 2. Innovation Features (Static? Or from Disk)
             # Not in bulk upload, so load from disk.
-            innov_features = load_innovation_features(get_data_path(REQUIRED_FILES[1]))
+            innov_features = load_innovation_features(safe_get_path(REQUIRED_FILES[1]))
             
             # 3. Template (Static? Or from Disk)
-            template = load_marketing_template(get_data_path(REQUIRED_FILES[0]))
+            template = load_marketing_template(safe_get_path(REQUIRED_FILES[0]))
             
             # 4. Sales Admin (Preferred from Session)
             sales = st.session_state.get('sales_admin_data') # Keys map?
             # load_sales_admin_expenses returns dict {'last_sales': ...}
             # 'sales_admin_data' from bulk upload uses load_sales_admin_expenses too.
             if not sales:
-                sales = load_sales_admin_expenses(get_data_path(REQUIRED_FILES[3]))
+                sales = load_sales_admin_expenses(safe_get_path(REQUIRED_FILES[3]))
             
             # 5. Inventory (Preferred from Session)
             inv = st.session_state.get('finished_goods_data')
             if not inv:
-                inv = load_finished_goods_inventory(get_data_path(REQUIRED_FILES[4]))
+                inv = load_finished_goods_inventory(safe_get_path(REQUIRED_FILES[4]))
                 
             # 6. Intelligence - BUILD FROM SESSION DATA to match UI
             # Instead of loading from disk (which may differ from Test Data),
@@ -492,25 +511,25 @@ class ReportBridge:
             # 1. Materials
             materials = st.session_state.get('materials_data')
             if not materials:
-                materials = load_raw_materials_by_zone(get_data_path(REQUIRED_FILES[0]))
+                materials = load_raw_materials_by_zone(safe_get_path(REQUIRED_FILES[0]))
                 
             # 2. Finished Goods
             fg = st.session_state.get('finished_goods_data')
             if not fg:
-                fg = load_finished_goods_by_zone(get_data_path(REQUIRED_FILES[1]))
+                fg = load_finished_goods_by_zone(safe_get_path(REQUIRED_FILES[1]))
             
             # 3. Workers
             workers = st.session_state.get('workers_data')
             if not workers:
-                workers = load_workers_by_zone(get_data_path(REQUIRED_FILES[2]))
+                workers = load_workers_by_zone(safe_get_path(REQUIRED_FILES[2]))
                 
             # 4. Machines
             machines = st.session_state.get('machine_spaces_data')
             if not machines:
-                machines = load_machines_by_zone(get_data_path(REQUIRED_FILES[3]))
+                machines = load_machines_by_zone(safe_get_path(REQUIRED_FILES[3]))
                 
             # 5. Template (Static)
-            template = load_production_template(get_data_path(REQUIRED_FILES[4]))
+            template = load_production_template(safe_get_path(REQUIRED_FILES[4]))
             
             # Build Overrides
             decisions_override = {
@@ -555,16 +574,16 @@ class ReportBridge:
             # 1. Materials
             materials = st.session_state.get('materials_data')
             if not materials:
-                materials = load_raw_materials(get_data_path(REQUIRED_FILES[0]))
+                materials = load_raw_materials(safe_get_path(REQUIRED_FILES[0]))
             
             # 2. Production Costs
             # Check if production_data serves this purpose
             costs = st.session_state.get('production_data') 
             if not costs:
-                costs = load_production_costs(get_data_path(REQUIRED_FILES[1]))
+                costs = load_production_costs(safe_get_path(REQUIRED_FILES[1]))
                 
             # 3. Template
-            template = load_procurement_template(get_data_path(REQUIRED_FILES[2]))
+            template = load_procurement_template(safe_get_path(REQUIRED_FILES[2]))
             
             # Build Overrides
             supplier_map = {

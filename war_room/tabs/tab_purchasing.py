@@ -21,22 +21,55 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 try:
-    from case_parameters import COMMON
+    from case_parameters import COMMON, PURCHASING, PRODUCTION
     FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+    
+    # Parts and supplier data from case
+    PARTS_DATA = PURCHASING.get('PARTS', {})
+    PIECES_DATA = PURCHASING.get('PIECES', {})
+    INITIAL_INVENTORY = PRODUCTION.get('INITIAL_INVENTORY', {})
 except ImportError:
     FORTNIGHTS = list(range(1, 9))
+    PARTS_DATA = {}
+    PIECES_DATA = {}
+    INITIAL_INVENTORY = {}
 
-# Default supplier configuration
-SUPPLIERS = {
-    'Part_A': {
-        'A1': {'lead_time': 1, 'cost': 50, 'payment_terms': 2, 'batch_size': 500},
-        'A2': {'lead_time': 2, 'cost': 45, 'payment_terms': 3, 'batch_size': 1000}
-    },
-    'Part_B': {
-        'B1': {'lead_time': 1, 'cost': 30, 'payment_terms': 1, 'batch_size': 300},
-        'B2': {'lead_time': 3, 'cost': 25, 'payment_terms': 2, 'batch_size': 600}
-    }
-}
+# Build supplier configuration from case_parameters
+def build_suppliers_from_case():
+    """Build supplier table from case_parameters."""
+    suppliers = []
+    for part_name, part_info in PARTS_DATA.items():
+        batch_size = part_info.get('batch_size', 30)
+        ordering_cost = part_info.get('ordering_cost', 0)
+        for sup_code, sup_info in part_info.get('suppliers', {}).items():
+            price = sup_info.get('price', 0)
+            discount = sup_info.get('discount', 0)
+            discount_thresh = sup_info.get('discount_threshold', 0)
+            payment = sup_info.get('payment_fortnights', 0)
+            reliability = sup_info.get('delivery_rate', 1.0)
+            suppliers.append({
+                'Supplier': f'Supplier {sup_code}',
+                'Part': part_name,
+                'Lead_Time': 0,  # Immediate delivery (all suppliers deliver same fortnight)
+                'Cost': price,   # Cost per batch
+                'Price_Per_Batch': price,
+                'Batch_Size': batch_size,
+                'Payment_Terms': payment,  # Keep numeric for MRP calcs
+                'Discount': f'{discount*100:.0f}%' if discount else 'None',
+                'Discount_Threshold': str(discount_thresh) if discount else '-',
+                'Reliability': f'{reliability*100:.0f}%'
+            })
+    return suppliers
+
+SUPPLIERS = build_suppliers_from_case() if PARTS_DATA else [
+    {'Supplier': 'Supplier A', 'Part': 'Part A', 'Lead_Time': 0, 'Cost': 125, 
+     'Price_Per_Batch': 125, 'Batch_Size': 30, 'Payment_Terms': 0,
+     'Discount': 'None', 'Discount_Threshold': '-', 'Reliability': '100%'},
+    {'Supplier': 'Supplier B', 'Part': 'Part A', 'Lead_Time': 0, 'Cost': 100, 
+     'Price_Per_Batch': 100, 'Batch_Size': 30, 'Payment_Terms': 2,
+     'Discount': '16%', 'Discount_Threshold': 150, 'Reliability': '80%'},
+]
+
 
 
 def init_purchasing_state():
@@ -46,28 +79,27 @@ def init_purchasing_state():
         
         raw_data = get_state('materials_data')
         
-        # Supplier configuration
-        supplier_data = [
-            {'Supplier': 'A1', 'Part': 'Part A', 'Lead_Time': 1, 'Cost': 50, 'Payment_Terms': 2, 'Batch_Size': 500},
-            {'Supplier': 'A2', 'Part': 'Part A', 'Lead_Time': 2, 'Cost': 45, 'Payment_Terms': 3, 'Batch_Size': 1000},
-            {'Supplier': 'B1', 'Part': 'Part B', 'Lead_Time': 1, 'Cost': 30, 'Payment_Terms': 1, 'Batch_Size': 300},
-            {'Supplier': 'B2', 'Part': 'Part B', 'Lead_Time': 3, 'Cost': 25, 'Payment_Terms': 2, 'Batch_Size': 600}
-        ]
-        st.session_state.purchasing_suppliers = pd.DataFrame(supplier_data)
+        # Supplier configuration from case_parameters
+        st.session_state.purchasing_suppliers = pd.DataFrame(SUPPLIERS)
         
-        # MRP Engine data
-        # INTEGRATION: Read from materials_data if available
-        opening_inv = 1000 # Default
+        # MRP Engine data - Use initial inventory from case if available
+        opening_inv = 1000  # Default
+        
+        # Try to get initial inventory from case_parameters first
+        if INITIAL_INVENTORY:
+            center_inv = INITIAL_INVENTORY.get('Center', {})
+            west_inv = INITIAL_INVENTORY.get('West', {})
+            part_a = center_inv.get('Part A', 0) + west_inv.get('Part A', 0)
+            part_b = center_inv.get('Part B', 0) + west_inv.get('Part B', 0)
+            opening_inv = part_a + part_b if (part_a + part_b) > 0 else 1000
+        
+        # Override with uploaded data if available
         if raw_data and 'parts' in raw_data:
-            # Sum stock of all parts? Or just one? Usually Part A and B.
-            # For simplicity in this aggregated view, let's sum them or pick one.
-            # Or better: Check if we have 'Part A' stock.
             part_a = raw_data['parts'].get('Part A (Unit)', {}).get('stock', 0)
             part_b = raw_data['parts'].get('Part B (Unit)', {}).get('stock', 0)
-            # Try looser match if exact key fails
             if part_a == 0 and part_b == 0:
-                 total_stock = sum(p['stock'] for p in raw_data['parts'].values())
-                 opening_inv = total_stock if total_stock > 0 else 1000
+                total_stock = sum(p.get('stock', 0) for p in raw_data['parts'].values())
+                opening_inv = total_stock if total_stock > 0 else opening_inv
             else:
                 opening_inv = part_a + part_b
         
@@ -78,18 +110,21 @@ def init_purchasing_state():
         }
         st.session_state.purchasing_mrp = pd.DataFrame(mrp_data)
         
-        # Orders by supplier
+        # Orders by supplier - dynamically build from SUPPLIERS list
+        supplier_names = list(set(s['Supplier'] for s in SUPPLIERS)) if SUPPLIERS else ['Supplier A', 'Supplier B', 'Supplier C']
         orders_data = []
-        for supplier in ['A1', 'A2', 'B1', 'B2']:
+        for supplier in supplier_names:
             orders_data.append({
                 'Supplier': supplier,
                 **{f'FN{fn}': 0 for fn in FORTNIGHTS}
             })
         st.session_state.purchasing_orders = pd.DataFrame(orders_data)
         
-        # Cost analysis
-        st.session_state.purchasing_ordering_cost = 5000
+        # Cost analysis - use actual values from case if available
+        part_a_cost = PARTS_DATA.get('Part A', {}).get('ordering_cost', 2300)
+        st.session_state.purchasing_ordering_cost = part_a_cost
         st.session_state.purchasing_holding_cost = 2000
+
 
 
 def sync_from_production():

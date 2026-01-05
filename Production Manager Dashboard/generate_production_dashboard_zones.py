@@ -28,7 +28,7 @@ except ImportError:
     COMMON = {}
     # Fallback for config
     OUTPUT_DIR = Path(__file__).parent
-    def get_data_path(f): return Path(f)
+    def get_data_path(f, **kwargs): return Path(f) if Path(f).exists() else None
 
 # Import shared outputs for inter-dashboard communication
 try:
@@ -265,12 +265,11 @@ def load_machines_by_zone(filepath):
 
 
 def load_production_template(filepath):
-    """Load production decisions template."""
-    try:
-        df = pd.read_excel(filepath, sheet_name='Production', header=None)
-        return {'df': df, 'exists': True}
-    except:
+    """Load production template structure."""
+    if filepath is None:
         return {'df': None, 'exists': False}
+    df = load_excel_file(filepath, sheet_name='Production')
+    return {'df': df, 'exists': df is not None}
 
 
 # =============================================================================
@@ -614,7 +613,7 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         # IMPORTANT: Updated logic as cols shifted
         # Target was col 2. Real Output was col 6 (now 7).
         zone_total_row = zone_output_rows.get(zone, {}).get('total', 10)
-        cell = ws2.cell(row=row, column=2, value=f"=ZONE_CALCULATORS!B{zone_total_row}")
+        cell = ws2.cell(row=row, column=2, value=f"='ZONE CALCULATORS'!B{zone_total_row}")
         cell.border = thin_border
         cell.fill = ref_fill
 
@@ -736,13 +735,13 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
         # Updated: Real Output was Col 7 in Zone Calc
         # Total Real Output is in Col 7
         zone_total = zone_output_rows.get(zone, {}).get('total', 10)
-        cell = ws3.cell(row=row, column=3, value=f"=ZONE_CALCULATORS!G{zone_total}")
+        cell = ws3.cell(row=row, column=3, value=f"='ZONE CALCULATORS'!G{zone_total}")
         cell.border = thin_border
         cell.fill = calc_fill
 
         # Link to first FN overtime of zone
         zone_data_start = zone_output_rows.get(zone, {}).get('data_start', 10)
-        cell = ws3.cell(row=row, column=4, value=f"=ZONE_CALCULATORS!C{zone_data_start}")
+        cell = ws3.cell(row=row, column=4, value=f"='ZONE CALCULATORS'!C{zone_data_start}")
         cell.border = thin_border
         cell.fill = calc_fill
 
@@ -802,11 +801,11 @@ def create_zones_dashboard(materials_data, fg_data, workers_data,
 
             ws3.cell(row=row, column=2, value=section).border = thin_border
 
-            cell = ws3.cell(row=row, column=3, value=f"=RESOURCE_MGR!C{assign_row}")
+            cell = ws3.cell(row=row, column=3, value=f"='RESOURCE MGR'!C{assign_row}")
             cell.border = thin_border
             cell.fill = calc_fill
 
-            cell = ws3.cell(row=row, column=4, value=f"=RESOURCE_MGR!D{assign_row}")
+            cell = ws3.cell(row=row, column=4, value=f"='RESOURCE MGR'!D{assign_row}")
             cell.border = thin_border
             cell.fill = calc_fill
 

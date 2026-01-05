@@ -46,23 +46,18 @@ with st.sidebar:
     
     # User Manual Download
     from pathlib import Path
-    # Try multiple possible locations for the PDF
-    possible_paths = [
-        Path(__file__).parent.parent / "Exsim_user_manual.pdf",  # Relative to app.py
-        Path.cwd() / "Exsim_user_manual.pdf",  # Current working directory
-        Path.cwd().parent / "Exsim_user_manual.pdf",  # Parent of CWD
-    ]
-    manual_path = None
-    for p in possible_paths:
-        if p.exists():
-            manual_path = p
-            break
+    # Look for the new v2 manual in the root directory
+    manual_path = Path(__file__).parent.parent / "War Room User Manual v2.pdf"
     
-    if manual_path:
+    if not manual_path.exists():
+         # Fallback check in CWD if running from root
+         manual_path = Path.cwd() / "War Room User Manual v2.pdf"
+
+    if manual_path.exists():
         st.download_button(
             label="📖 Download User Manual",
             data=manual_path.read_bytes(),
-            file_name="Exsim_User_Manual.pdf",
+            file_name="War_Room_User_Manual_v2.pdf",
             mime="application/pdf",
             use_container_width=True
         )

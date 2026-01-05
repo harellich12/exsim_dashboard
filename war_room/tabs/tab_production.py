@@ -19,12 +19,26 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 try:
-    from case_parameters import COMMON
+    from case_parameters import COMMON, PRODUCTION, WORKFORCE
     ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
     FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
+    
+    # Production parameters from case
+    MACHINERY = PRODUCTION.get('MACHINERY', {})
+    FACILITIES = PRODUCTION.get('FACILITIES', {})
+    INITIAL_MACHINES = PRODUCTION.get('INITIAL_MACHINES', {})
+    MACHINE_TRANSFER_COSTS = PRODUCTION.get('MACHINE_TRANSFER_COSTS', {})
+    
+    # Worker parameters
+    WORKER_PARAMS = WORKFORCE.get('PRODUCTION_WORKERS', {})
 except ImportError:
     ZONES = ['Center', 'West', 'North', 'East', 'South']
     FORTNIGHTS = list(range(1, 9))
+    MACHINERY = {}
+    FACILITIES = {}
+    INITIAL_MACHINES = {}
+    MACHINE_TRANSFER_COSTS = {}
+    WORKER_PARAMS = {}
 
 # Zone Colors
 ZONE_COLORS = {
@@ -35,13 +49,14 @@ ZONE_COLORS = {
     'South': '#6D4C41'    # Brown
 }
 
-# Production defaults
+# Production defaults - now sourced from case_parameters where available
 PROD_CONFIG = {
-    'units_per_worker': 50,
-    'units_per_machine': 100,
-    'overtime_multiplier': 1.25,
-    'module_capacity': 5  # machines per module
+    'units_per_worker': MACHINERY.get('M1', {}).get('capacity_per_fortnight', 200) // max(MACHINERY.get('M1', {}).get('workers_required', 1), 1),
+    'units_per_machine': MACHINERY.get('M1', {}).get('capacity_per_fortnight', 200),
+    'overtime_multiplier': 1 + WORKER_PARAMS.get('OVERTIME_CAPACITY_INCREASE', 0.20),
+    'module_capacity': FACILITIES.get('SPACES_PER_MODULE', 18)  # spaces per module
 }
+
 
 
 def init_production_state():
@@ -438,6 +453,45 @@ def render_resource_mgr():
     )
     
     st.plotly_chart(fig, width='stretch')
+    
+    # Section D: Machine Transfer Cost Calculator
+    st.markdown("### 🚁 Section D: Machine Transfer Cost Calculator")
+    st.caption("Calculate cost to transfer machines between regions (by airplane)")
+    
+    if MACHINE_TRANSFER_COSTS:
+        routes = list(MACHINE_TRANSFER_COSTS.keys())
+        machine_types = ['M1', 'M2', 'M3_ALPHA', 'M3_BETA', 'M4']
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            selected_route = st.selectbox("Route", routes, key='transfer_route')
+        with col2:
+            selected_machine = st.selectbox("Machine Type", machine_types, key='transfer_machine')
+        with col3:
+            quantity = st.number_input("Quantity", min_value=1, value=1, key='transfer_qty')
+        
+        # Calculate cost
+        route_costs = MACHINE_TRANSFER_COSTS.get(selected_route, {})
+        unit_cost = route_costs.get(selected_machine, 0)
+        total_cost = unit_cost * quantity
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Cost per Machine", f"${unit_cost:,.2f}")
+        with col_b:
+            st.metric("Total Transfer Cost", f"${total_cost:,.2f}")
+        
+        # Display full cost matrix
+        with st.expander("📋 Full Transfer Cost Matrix"):
+            matrix_data = []
+            for route, costs in MACHINE_TRANSFER_COSTS.items():
+                row = {'Route': route}
+                row.update(costs)
+                matrix_data.append(row)
+            st.dataframe(pd.DataFrame(matrix_data), hide_index=True)
+    else:
+        st.info("Transfer cost data not available")
+
 
 
 def render_upload_ready_production():
