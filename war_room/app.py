@@ -67,10 +67,19 @@ with st.sidebar:
     st.subheader("📁 Data Upload")
     
     # Market Report
-    market_file = st.file_uploader("Market Report", type=['xlsx'], key='market_upload')
+    market_file = st.file_uploader("Market Report", type=['xlsx', 'xls'], key='market_upload')
     if market_file:
         set_state('market_data', load_market_report(market_file))
         st.success("✓ Market Report")
+        
+        # Also generate formatted market data for download
+        try:
+            from utils.market_mapper import generate_formatted_market_data
+            market_file.seek(0)
+            formatted_data = generate_formatted_market_data(market_file)
+            set_state('formatted_market_data', formatted_data)
+        except Exception as e:
+            print(f"Warning: Could not generate formatted market data: {e}")
     
     # Workers Balance
     workers_file = st.file_uploader("Workers Balance", type=['xlsx'], key='workers_upload')

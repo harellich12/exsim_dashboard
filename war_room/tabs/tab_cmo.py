@@ -139,15 +139,29 @@ def sync_from_market_data():
                     strategy_df.at[idx, 'Target_Demand'] = last_sales
         
         # --- From Finished Goods Inventory ---
+        # Stockout = Target Demand > Available Inventory
+        target_demand = strategy_df.at[idx, 'Target_Demand']
+        
         if finished_goods_data and finished_goods_data.get('zones'):
             zone_fg = finished_goods_data.get('zones', {}).get(zone, {})
-            final_inventory = zone_fg.get('final', zone_fg.get('inventory', 0))
+            available_inventory = zone_fg.get('final', zone_fg.get('inventory', 0))
+            capacity = zone_fg.get('capacity', 0)
             
-            # Stockout if final inventory <= 0
-            if final_inventory <= 0:
-                strategy_df.at[idx, 'Stockout'] = '🔴 TRUE DEMAND HIGHER'
+            # Only calculate stockout for zones with actual data (capacity > 0)
+            if capacity > 0:
+                if target_demand > available_inventory:
+                    strategy_df.at[idx, 'Stockout'] = '🔴 STOCKOUT'
+                elif available_inventory < (target_demand * 0.2):  # Low inventory warning
+                    strategy_df.at[idx, 'Stockout'] = '🟡 LOW'
+                else:
+                    strategy_df.at[idx, 'Stockout'] = '🟢 OK'
             else:
-                strategy_df.at[idx, 'Stockout'] = '🟢 OK'
+                # Inactive zone (no warehouse capacity) - show as N/A
+                strategy_df.at[idx, 'Stockout'] = '⚪ N/A'
+        else:
+            # No inventory data uploaded - show unknown
+            strategy_df.at[idx, 'Stockout'] = '⚪ N/A'
+
     
     set_state('cmo_strategy_inputs', strategy_df)
 
@@ -780,10 +794,25 @@ def render_cmo_tab():
     """Render the CMO (Marketing) tab with 5 Excel-aligned subtabs."""
     init_cmo_state()
     
-    # Header with Download Button
-    col_header, col_download = st.columns([4, 1])
+    # Header with Download Buttons
+    col_header, col_market_dl, col_download = st.columns([3, 1, 1])
     with col_header:
         st.header("📢 CMO Dashboard - Marketing Strategy")
+    
+    with col_market_dl:
+        # Download Formatted Market Data button
+        if get_state('formatted_market_data'):
+            st.download_button(
+                label="📊 Formatted Market",
+                data=get_state('formatted_market_data'),
+                file_name="Demand_Planner_Filled.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key='cmo_formatted_market_download',
+                help="Download formatted market data for Demand Planner"
+            )
+        else:
+            st.caption("Upload market report to enable")
+    
     with col_download:
         try:
             from utils.report_bridge import create_download_button
@@ -793,6 +822,7 @@ def render_cmo_tab():
     
     # Always sync data from all available sources
     sync_from_market_data()
+
     
     # Show data source status
     market_data = get_state('market_data')
@@ -868,7 +898,8 @@ def render_cmo_tab():
             'demand_forecast': dict(zip(strategy_df['Zone'], strategy_df['Target_Demand'])),
             'marketing_spend': output_df['Mkt_Cost'].sum(),
             'pricing': dict(zip(strategy_df['Zone'], strategy_df['Price'])),
-            'innovation_costs': innovation_cost
+            'innovation_costs': innovation_cost,
+            'payment_terms': dict(zip(strategy_df['Zone'], strategy_df['Payment']))  # A/B/C/D per zone
         }
         
         export_dashboard_data('CMO', outputs)

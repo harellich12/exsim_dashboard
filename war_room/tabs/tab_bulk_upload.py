@@ -21,7 +21,15 @@ EXPECTED_FILES = {
         'state_key': 'market_data',
         'loader': load_market_report,
         'tab': 'CMO (Marketing)',
-        'description': 'Market share, segment data, competitive info'
+        'description': 'Market share, segment data, competitive info',
+        'generate_formatted': True  # Flag to trigger formatted market data generation
+    },
+    'market-report.xls': {
+        'state_key': 'market_data',
+        'loader': load_market_report,
+        'tab': 'CMO (Marketing)',
+        'description': 'Market share, segment data, competitive info',
+        'generate_formatted': True  # Flag to trigger formatted market data generation
     },
     'workers_balance_overtime.xlsx': {
         'state_key': 'workers_data',
@@ -253,6 +261,16 @@ def render_bulk_upload():
                             'tab': config['tab'],
                             'status': '✅ Loaded'
                         })
+                        
+                        # Generate formatted market data if applicable
+                        if config.get('generate_formatted'):
+                            try:
+                                from utils.market_mapper import generate_formatted_market_data
+                                file.seek(0)  # Reset file pointer
+                                formatted_data = generate_formatted_market_data(file)
+                                set_state('formatted_market_data', formatted_data)
+                            except Exception as fmt_err:
+                                print(f"Warning: Could not generate formatted market data: {fmt_err}")
                     else:
                         results['errors'].append({
                             'file': filename,

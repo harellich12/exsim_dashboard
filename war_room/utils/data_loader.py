@@ -23,9 +23,169 @@ def parse_numeric(value) -> float:
         return 0.0
 
 
+def _load_market_report_xml(content: bytes, data: Dict, zones: list, segments: list, my_company: str) -> Dict[str, Any]:
+    """
+    Parse SpreadsheetML XML format for market-report.xls files.
+    Extracts data for the specified company (default A3) and populates the CMO data structure.
+    """
+    import xml.etree.ElementTree as ET
+    import io
+    
+    ns = {'ss': 'urn:schemas-microsoft-com:office:spreadsheet'}
+    tree = ET.parse(io.BytesIO(content))
+    root = tree.getroot()
+    
+    sheet = root.find('.//ss:Worksheet', ns)
+    if sheet is None:
+        return data
+    table = sheet.find('ss:Table', ns)
+    if table is None:
+        return data
+    rows = table.findall('ss:Row', ns)
+    
+    current_section = None
+    COMPANIES = ['A1', 'A2', 'A3', 'A4']
+    OTHER_COMPANIES = [c for c in COMPANIES if c != my_company]
+    
+    # Temporary storage
+    store = {
+        'market_share_region': {},
+        'market_share_segment': {},
+        'price': {},
+        'awareness': {},
+        'attractiveness': {},
+        'salesforce': {}
+    }
+    
+    def clean_num(val):
+        try:
+            if isinstance(val, str):
+                val = val.strip()
+                if not val:
+                    return 0.0
+            return float(val)
+        except:
+            return 0.0
+    
+    def parse_zone_table(row_data, key):
+        if not row_data:
+            return
+        if row_data[0].strip() in zones:
+            zone = row_data[0].strip()
+            if len(row_data) >= 5:
+                for i, comp in enumerate(COMPANIES):
+                    store[key].setdefault(comp, {})[zone] = clean_num(row_data[i + 1])
+    
+    def parse_segment_table(row_data, key):
+        if not row_data or len(row_data) < 3:
+            return
+        zone_attr = f'_current_{key}_zone'
+        zone_candidate = row_data[0].strip()
+        segment_candidate = row_data[1].strip() if len(row_data) > 1 else ""
+        
+        if zone_candidate in zones:
+            _load_market_report_xml.__dict__[zone_attr] = zone_candidate
+            zone = zone_candidate
+        elif zone_attr in _load_market_report_xml.__dict__:
+            zone = _load_market_report_xml.__dict__[zone_attr]
+        else:
+            return
+
+        if segment_candidate in segments:
+            if len(row_data) >= 6:
+                for i, comp in enumerate(COMPANIES):
+                    store[key].setdefault(comp, {}).setdefault(zone, {})[segment_candidate] = clean_num(row_data[i + 2])
+    
+    for row in rows:
+        cells = row.findall('ss:Cell', ns)
+        row_data = []
+        for cell in cells:
+            cell_data = cell.find('ss:Data', ns)
+            text = cell_data.text if cell_data is not None and cell_data.text is not None else ""
+            row_data.append(text)
+        
+        full_row_text = " ".join([str(x) for x in row_data]).strip()
+        
+        # Section detection
+        if "Market Share Per Region (%)" in full_row_text and "Segment" not in full_row_text:
+            current_section = "market_share_region"
+            continue
+        elif "Market Share Per Region Per Segment (%)" in full_row_text:
+            current_section = "market_share_segment"
+            continue
+        elif row_data and row_data[0].strip().lower() == 'price' or (row_data and 'Price' in row_data[0]):
+            current_section = "price"
+            continue
+        elif "Product Awareness Percentage Per Segment" in full_row_text:
+            current_section = "awareness"
+            continue
+        elif "Product attractiveness (Perceived)" in full_row_text:
+            current_section = "attractiveness"
+            continue
+        elif "Evaluation of the Promotional Impact of Salesforce" in full_row_text:
+            current_section = "salesforce"
+            continue
+        
+        # Data extraction
+        if current_section == "market_share_region":
+            parse_zone_table(row_data, 'market_share_region')
+        elif current_section == "market_share_segment":
+            parse_segment_table(row_data, 'market_share_segment')
+        elif current_section == "price":
+            parse_zone_table(row_data, 'price')
+        elif current_section == "awareness":
+            parse_segment_table(row_data, 'awareness')
+        elif current_section == "attractiveness":
+            parse_segment_table(row_data, 'attractiveness')
+        elif current_section == "salesforce":
+            parse_zone_table(row_data, 'salesforce')
+    
+    # Convert store to CMO data structure
+    for zone in zones:
+        # Zone-level data (from region tables)
+        my_share = store['market_share_region'].get(my_company, {}).get(zone, 0)
+        my_price = store['price'].get(my_company, {}).get(zone, 0)
+        
+        # Competitor averages
+        comp_prices = [store['price'].get(c, {}).get(zone, 0) for c in OTHER_COMPANIES]
+        comp_prices = [p for p in comp_prices if p > 0]
+        comp_avg_price = sum(comp_prices) / len(comp_prices) if comp_prices else 0
+        
+        data['zones'][zone]['my_market_share'] = my_share
+        data['zones'][zone]['my_price'] = my_price
+        data['zones'][zone]['comp_avg_price'] = comp_avg_price
+        
+        # Segment-level data
+        for segment in segments:
+            seg_share = store['market_share_segment'].get(my_company, {}).get(zone, {}).get(segment, 0)
+            seg_awareness = store['awareness'].get(my_company, {}).get(zone, {}).get(segment, 0)
+            seg_attract = store['attractiveness'].get(my_company, {}).get(zone, {}).get(segment, 0)
+            
+            # Competitor awareness average
+            comp_awareness = [store['awareness'].get(c, {}).get(zone, {}).get(segment, 0) for c in OTHER_COMPANIES]
+            comp_awareness = [a for a in comp_awareness if a > 0]
+            comp_avg_aware = sum(comp_awareness) / len(comp_awareness) if comp_awareness else 0
+            
+            data['by_segment'][segment][zone]['my_market_share'] = seg_share
+            data['by_segment'][segment][zone]['my_awareness'] = seg_awareness
+            data['by_segment'][segment][zone]['my_attractiveness'] = seg_attract
+            data['by_segment'][segment][zone]['my_price'] = my_price
+            data['by_segment'][segment][zone]['comp_avg_awareness'] = comp_avg_aware
+            data['by_segment'][segment][zone]['comp_avg_price'] = comp_avg_price
+            
+            # Update zone-level awareness (use first segment found)
+            if data['zones'][zone]['my_awareness'] == 0:
+                data['zones'][zone]['my_awareness'] = seg_awareness
+            if data['zones'][zone]['my_attractiveness'] == 0:
+                data['zones'][zone]['my_attractiveness'] = seg_attract
+            if data['zones'][zone]['comp_avg_awareness'] == 0:
+                data['zones'][zone]['comp_avg_awareness'] = comp_avg_aware
+    
+    return data
+
 def load_market_report(file) -> Dict[str, Any]:
     """
-    Load market-report.xlsx - CMO input.
+    Load market-report.xlsx or market-report.xls (SpreadsheetML XML) - CMO input.
     Parses segment-level data including market share, awareness, price, attractiveness.
     Must extract: my_market_share, my_awareness, my_price, my_attractiveness, 
                   comp_avg_awareness, comp_avg_price for each zone.
@@ -33,31 +193,52 @@ def load_market_report(file) -> Dict[str, Any]:
     ZONES = ['Center', 'West', 'North', 'East', 'South']
     SEGMENTS = ['High', 'Low']
     MY_COMPANY = 'Company 3'  # Default company identifier
+    MY_COMPANY_ID = 'A3'  # For XML format
+    
+    # Initialize data structure matching CMO generator
+    data = {
+        'by_segment': {seg: {zone: {
+            'my_market_share': 0,
+            'my_awareness': 0,
+            'my_attractiveness': 0,
+            'my_price': 0,
+            'comp_avg_awareness': 0,
+            'comp_avg_price': 0
+        } for zone in ZONES} for seg in SEGMENTS},
+        'zones': {zone: {
+            'my_price': 0,
+            'comp_avg_price': 0,
+            'my_awareness': 0,
+            'my_attractiveness': 0,
+            'my_market_share': 0,
+            'comp_avg_awareness': 0
+        } for zone in ZONES},
+        'segments': SEGMENTS,
+        'raw_df': None
+    }
     
     try:
-        df = pd.read_excel(file, header=None)
+        # Read file content to detect format
+        if hasattr(file, 'read'):
+            content = file.read()
+            if hasattr(file, 'seek'):
+                file.seek(0)
+        else:
+            with open(file, 'rb') as f:
+                content = f.read()
         
-        # Initialize data structure matching CMO generator
-        data = {
-            'by_segment': {seg: {zone: {
-                'my_market_share': 0,
-                'my_awareness': 0,
-                'my_attractiveness': 0,
-                'my_price': 0,
-                'comp_avg_awareness': 0,
-                'comp_avg_price': 0
-            } for zone in ZONES} for seg in SEGMENTS},
-            'zones': {zone: {
-                'my_price': 0,
-                'comp_avg_price': 0,
-                'my_awareness': 0,
-                'my_attractiveness': 0,
-                'my_market_share': 0,
-                'comp_avg_awareness': 0
-            } for zone in ZONES},
-            'segments': SEGMENTS,
-            'raw_df': df
-        }
+        # Check if it's SpreadsheetML XML format
+        is_xml = content[:100].decode('utf-8', errors='ignore').strip().startswith('<?xml')
+        
+        if is_xml:
+            # Use custom XML parser for SpreadsheetML format
+            return _load_market_report_xml(content, data, ZONES, SEGMENTS, MY_COMPANY_ID)
+        else:
+            # Standard Excel format - use pandas
+            if hasattr(file, 'seek'):
+                file.seek(0)
+            df = pd.read_excel(file, header=None)
+            data['raw_df'] = df
         
         current_section = None
         my_company_col = None
@@ -86,13 +267,17 @@ def load_market_report(file) -> Dict[str, Any]:
                 my_company_col = None
             
             # Detect column headers with company names
+            # Handle both formats: "Company 3", "A3 - CompanyName", or just "A3"
             if first_val.lower() == 'zone' or first_val.lower() == 'region':
                 comp_cols = []
                 for col_idx in range(len(row)):
                     col_val = str(row.iloc[col_idx]).strip() if pd.notna(row.iloc[col_idx]) else ''
-                    if MY_COMPANY in col_val:
+                    # Match A3 or "A3 - ..." for my company
+                    if col_val.startswith(MY_COMPANY_ID) or MY_COMPANY in col_val:
                         my_company_col = col_idx
-                    elif 'Company' in col_val and MY_COMPANY not in col_val:
+                    # Match other company patterns: A1, A2, A4 or "Company N"
+                    elif any(col_val.startswith(c) for c in ['A1', 'A2', 'A4']) or \
+                         ('Company' in col_val and MY_COMPANY not in col_val):
                         comp_cols.append(col_idx)
             
             # Parse zone data rows
