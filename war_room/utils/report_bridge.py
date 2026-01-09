@@ -97,7 +97,8 @@ class ReportBridge:
             'demand_forecast': {zone: st.session_state.get(f'cmo_demand_{zone}', 0) for zone in ZONES},
             'marketing_spend': st.session_state.get('cmo_marketing_spend', 0),
             'pricing': {zone: st.session_state.get(f'cmo_price_{zone}', 0) for zone in ZONES},
-            'innovation_costs': st.session_state.get('cmo_innovation_costs', 0)
+            'innovation_costs': st.session_state.get('cmo_innovation_costs', 0),
+            'payment_terms': st.session_state.get('cmo_payment_terms', {zone: 'D' for zone in ZONES})
         })
     
     @staticmethod

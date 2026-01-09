@@ -1,0 +1,22 @@
+Country: IESE EMBA BCN 26-1,,,,,,
+Sales & Administration Expenses,Company:Company 3,,,,,
+Period: 6,Course: IESE EMBA BCN 26-1,,,,,
+                 Sales            ,,,,,,
+Region,Brand,Units,Local Price,Gross Sales,Discount %,Net Sales
+Center,A,"8,900",$68.00,"$605,200",7.5,"$559,810"
+West,A,"4,028",$68.00,"$273,904",7.5,"$253,361"
+North,A,"4,400",$91.00,"$400,400",7.5,"$370,370"
+Total,,"17,328",,"$1,279,504",,"$1,183,541"
+,,,,,,
+             Sales & Administration Expenses        ,,,,,,
+,Amount,Expense,,,,
+Salespeople Salaries,44 Salespeople,"$33,000",,,,
+Other channels costs,-,$0,,,,
+Salespeople Hiring Expenses,0 Salespeople,$0,,,,
+TV Advertising Expenses,35 spots,"$105,000",,,,
+Radio Advertising Expenses,394 spots,"$118,200",,,,
+Plant Modules Leasing Expenses,0 Modules,$0,,,,
+Plant Module Administrative Expenses,6 Modules,"$60,000",,,,
+Executive Salaries,,$0,,,,
+Total,,"$316,200",,,,
+,,,,,,

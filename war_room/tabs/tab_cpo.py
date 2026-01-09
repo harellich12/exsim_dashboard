@@ -25,12 +25,12 @@ try:
 except ImportError:
     ZONES = ['Center', 'West', 'North', 'East', 'South']
 
-# Default HR Parameters
+# Default HR Parameters (Table VI.1 - Workforce data)
 HR_CONFIG = {
-    'hiring_fee': 3000,
-    'severance': 5000,
+    'hiring_fee': 240,    # Table VI.1: Hiring cost $240
+    'severance': 220,     # Table VI.1: Layoff cost $220
     'default_turnover': 0.05,
-    'default_salary': 25  # hourly
+    'default_salary': 27.3  # Table VI.1: $27.3/fortnight
 }
 
 BENEFITS = [
@@ -82,6 +82,10 @@ def init_cpo_state():
 def sync_from_uploads():
     """Sync CPO data from uploaded files."""
     workers_data = get_state('workers_data')
+    
+    # Guard: ensure cpo_workforce exists
+    if 'cpo_workforce' not in st.session_state:
+        return
     
     if workers_data and 'zones' in workers_data:
         for idx, row in st.session_state.cpo_workforce.iterrows():
@@ -332,7 +336,72 @@ def render_compensation_strategy():
     
     if grid_response.data is not None:
         st.session_state.cpo_benefits = pd.DataFrame(grid_response.data)
-
+    
+    # Productivity Multiplier Display (Enhancement)
+    st.markdown("### 📈 Productivity Impact Estimate")
+    st.caption("Estimated productivity gains from benefits (simulated)")
+    
+    benefits = st.session_state.cpo_benefits
+    training_pct = benefits[benefits['Benefit'].str.contains('Training')]['Amount'].values[0]
+    health_safety_pct = benefits[benefits['Benefit'].str.contains('Health & safety')]['Amount'].values[0]
+    health_ins_pct = benefits[benefits['Benefit'].str.contains('Health insurance')]['Amount'].values[0]
+    
+    # Estimated productivity impacts (simplified model)
+    training_boost = training_pct * 0.5  # 1% training → 0.5% capacity boost
+    absenteeism_reduction = health_safety_pct * 0.3  # 1% H&S → 0.3% less absenteeism
+    morale_boost = health_ins_pct * 0.2  # 1% insurance → 0.2% engagement
+    
+    total_productivity_gain = training_boost + absenteeism_reduction + morale_boost
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Training → Capacity", f"+{training_boost:.1f}%")
+    with col2:
+        st.metric("H&S → Absenteeism", f"-{absenteeism_reduction:.1f}%")
+    with col3:
+        st.metric("Insurance → Morale", f"+{morale_boost:.1f}%")
+    with col4:
+        st.metric("**Total Productivity**", f"+{total_productivity_gain:.1f}%", 
+                  delta=f"{total_productivity_gain:.1f}%" if total_productivity_gain > 0 else None)
+    
+    if total_productivity_gain >= 3:
+        st.success("✅ Excellent benefits package - expect strong workforce engagement!")
+    elif total_productivity_gain >= 1:
+        st.info("ℹ️ Good benefits package - moderate productivity improvement expected.")
+    else:
+        st.warning("⚠️ Consider increasing benefits to boost productivity.")
+    
+    # Salary Competitiveness Check
+    st.markdown("### 💰 Salary Competitiveness Analysis")
+    
+    wf = st.session_state.cpo_workforce
+    competitor_avg = HR_CONFIG['default_salary'] * 1.05  # Assume competitors pay 5% more
+    
+    competitiveness_data = []
+    for _, row in wf.iterrows():
+        zone = row['Zone']
+        salary = row['New_Salary']
+        min_salary = row['Min_Salary'] if 'Min_Salary' in row else 26.0
+        
+        if salary < min_salary:
+            status = "🔴 BELOW MINIMUM"
+            gap = ((min_salary - salary) / min_salary) * 100
+        elif salary < competitor_avg:
+            status = "🟡 Below Market"
+            gap = ((competitor_avg - salary) / competitor_avg) * 100
+        else:
+            status = "🟢 Competitive"
+            gap = ((salary - competitor_avg) / competitor_avg) * 100
+        
+        competitiveness_data.append({
+            'Zone': zone,
+            'Your Salary': f"${salary:.2f}",
+            'Min Wage': f"${min_salary:.2f}",
+            'Market Avg': f"${competitor_avg:.2f}",
+            'Status': status
+        })
+    
+    st.dataframe(pd.DataFrame(competitiveness_data), hide_index=True, use_container_width=True)
 
 def render_labor_cost_analysis():
     """Render LABOR_COST_ANALYSIS sub-tab - Total labor cost forecast."""
@@ -505,8 +574,9 @@ def render_cross_reference():
         # Extract Production Plan Target Sum
         try:
             prod_plan = prod_data.get('production_plan', {})
-            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
-            overtime = prod_data.get('overtime_hours', 0)
+            # Type safety: convert to float (JSON may serialize as strings)
+            total_target = sum([float(d.get('Target', 0)) if d.get('Target') else 0 for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            overtime = float(prod_data.get('overtime_hours', 0) or 0)
         except:
             total_target = 0
             overtime = 0

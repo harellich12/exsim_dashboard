@@ -20,20 +20,27 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 try:
-    from case_parameters import COMMON
+    from case_parameters import COMMON, LOGISTICS as LOGISTICS_PARAMS
     ZONES = COMMON.get('ZONES', ['Center', 'West', 'North', 'East', 'South'])
     FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
     TRANSPORT_MODES = COMMON.get('TRANSPORT_MODES', ['Train', 'Truck', 'Plane'])
+    # Table V parameters
+    WAREHOUSE_DATA = LOGISTICS_PARAMS.get('WAREHOUSE', {})
+    TRANSPORT_COSTS_DATA = LOGISTICS_PARAMS.get('TRANSPORT_COSTS', {})
+    TRANSIT_TIMES_DATA = LOGISTICS_PARAMS.get('TRANSIT_TIMES', {})
 except ImportError:
     ZONES = ['Center', 'West', 'North', 'East', 'South']
     FORTNIGHTS = list(range(1, 9))
     TRANSPORT_MODES = ['Train', 'Truck', 'Plane']
+    WAREHOUSE_DATA = {}
+    TRANSPORT_COSTS_DATA = {}
+    TRANSIT_TIMES_DATA = {}
 
-# Transport Mode Configuration
+# Transport Mode Configuration (Lead times only - costs come from Table V.3)
 TRANSPORT_CONFIG = {
-    'Train': {'lead_time': 2, 'cost_per_unit': 5, 'description': 'Cheap bulk, plan ahead'},
-    'Truck': {'lead_time': 1, 'cost_per_unit': 10, 'description': 'Balanced option'},
-    'Plane': {'lead_time': 0, 'cost_per_unit': 25, 'description': 'Expensive, emergencies'}
+    'Train': {'lead_time': 2, 'description': 'Cheap bulk, plan ahead'},
+    'Truck': {'lead_time': 1, 'description': 'Balanced option'},
+    'Plane': {'lead_time': 0, 'description': 'Expensive, emergencies'}
 }
 
 # Warehouse Configuration
@@ -42,6 +49,51 @@ WAREHOUSE_CONFIG = {
     'buy_cost': 100000,
     'rent_cost': 50000
 }
+
+
+def get_transport_cost(origin: str, destination: str, mode: str, quantity: int) -> float:
+    """
+    Look up transport cost per unit from Table V.3 based on route, mode, and shipment size.
+    
+    Size brackets:
+    - Small: 1-999 units
+    - Medium: 1000-1999 units  
+    - Large: 2000+ units
+    
+    Returns cost per unit.
+    """
+    # Normalize mode name (Plane -> Airplane)
+    mode_key = 'Airplane' if mode == 'Plane' else mode
+    
+    # Build route key (try both directions)
+    route_key = f"{origin}-{destination}"
+    reverse_key = f"{destination}-{origin}"
+    
+    route_costs = TRANSPORT_COSTS_DATA.get(route_key) or TRANSPORT_COSTS_DATA.get(reverse_key)
+    
+    if not route_costs:
+        # Fallback if route not found
+        return 15.0  # Conservative default
+    
+    # Get mode-specific costs
+    mode_costs = route_costs.get(mode_key)
+    
+    if mode_costs is None:
+        return 15.0  # Fallback
+    
+    # Airplane has flat rate (no size discount)
+    if isinstance(mode_costs, (int, float)):
+        return float(mode_costs)
+    
+    # Truck/Train have size-based pricing
+    if quantity < 1000:
+        size_key = 'Small'
+    elif quantity < 2000:
+        size_key = 'Medium'
+    else:
+        size_key = 'Large'
+    
+    return float(mode_costs.get(size_key, 15.0))
 
 
 def init_logistics_state():
@@ -120,6 +172,10 @@ def sync_from_uploads():
     fg_data = get_state('finished_goods_data')
     prod_zones = get_state('production_zones')
     
+    # Guard: ensure logistics dataframes exist
+    if 'logistics_warehouses' not in st.session_state or 'logistics_inventory' not in st.session_state:
+        return
+    
     # Sync FG Capacity
     if fg_data and 'zones' in fg_data:
         for idx, row in st.session_state.logistics_warehouses.iterrows():
@@ -185,19 +241,30 @@ def render_route_config():
     st.subheader("🛣️ ROUTE CONFIG - Transport & Warehouse Settings")
     
     # Transport Modes Table
-    st.markdown("### 🚚 Transport Modes")
+    st.markdown("### 🚚 Transport Modes (Table V.2)")
+    
+    # Enhanced transport modes table with Table V.2 qualitative comparison
+    st.info("""
+    **Mode Selection Guide:**
+    - ✈️ **Airplane**: Fast (1 FN), 100% reliable, most expensive, no volume discounts
+    - 🚚 **Truck**: Medium speed (2-6 FN), variable reliability, 6-19% volume discounts
+    - 🚂 **Train**: Slow (3-8 FN), uncertain delivery, cheapest, 11-27% volume discounts
+    """)
     
     transport_df = pd.DataFrame([
-        {'Mode': 'Train', 'Lead Time': '2 FN', 'Cost/Unit': '$5', 'Best For': 'Cheap bulk, plan ahead'},
-        {'Mode': 'Truck', 'Lead Time': '1 FN', 'Cost/Unit': '$10', 'Best For': 'Balanced option'},
-        {'Mode': 'Plane', 'Lead Time': '0 FN', 'Cost/Unit': '$25', 'Best For': 'Expensive, emergencies only'}
+        {'Mode': '✈️ Airplane', 'Speed': 'Fast', 'Lead Time': '1 FN', 'Reliability': '100%', 'Discounts': 'None'},
+        {'Mode': '🚚 Truck', 'Speed': 'Slow', 'Lead Time': '2-6 FN', 'Reliability': 'Variable', 'Discounts': '6-19%'},
+        {'Mode': '🚂 Train', 'Speed': 'Slow', 'Lead Time': '3-8 FN', 'Reliability': 'Uncertain', 'Discounts': '11-27%'}
     ])
     
     st.dataframe(transport_df, width='stretch', hide_index=True)
     
     # Warehouse Configuration
-    st.markdown("### 🏭 Warehouse Configuration")
-    st.caption(f"Module Capacity: {WAREHOUSE_CONFIG['module_capacity']} units | Buy: ${WAREHOUSE_CONFIG['buy_cost']:,} | Rent: ${WAREHOUSE_CONFIG['rent_cost']:,}/period")
+    st.markdown("### 🏭 Warehouse Configuration (Table V.1)")
+    # Use Table V.1 values from case_parameters if available
+    module_capacity = WAREHOUSE_DATA.get('CAPACITY_PER_MODULE', 100)
+    module_rent_cost = WAREHOUSE_DATA.get('RENTAL_COST_PER_MODULE_PER_PERIOD', 800)
+    st.caption(f"Module Capacity: {module_capacity} units | Rent: ${module_rent_cost:,}/period (Table V.1)")
     
     EDITABLE_STYLE = {'backgroundColor': '#E3F2FD', 'color': '#1565C0'}
     REFERENCE_STYLE = {'backgroundColor': '#F5F5F5', 'color': '#616161'}
@@ -245,6 +312,51 @@ def render_route_config():
         st.metric("Rent Cost (Per Period)", f"${rent_cost:,.0f}")
     with col3:
         st.metric("Total Warehouse Cost", f"${buy_cost + rent_cost:,.0f}")
+    
+    # Shipping Cost Calculator (Table V.3)
+    st.markdown("### 💰 Shipping Cost Calculator (Table V.3)")
+    st.caption("Calculate shipping cost based on route, mode, and quantity")
+    
+    routes = list(TRANSPORT_COSTS_DATA.keys()) if TRANSPORT_COSTS_DATA else ['Center-West', 'Center-North']
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        route = st.selectbox("Route", routes, key='calc_route')
+    with col2:
+        mode = st.selectbox("Mode", ['Airplane', 'Truck', 'Train'], key='calc_mode')
+    with col3:
+        size = st.selectbox("Size", ['Small (1-999)', 'Medium (1000-1999)', 'Large (2000+)'], key='calc_size')
+    with col4:
+        quantity = st.number_input("Quantity", min_value=1, value=1000, key='calc_qty')
+    
+    # Calculate cost
+    route_costs = TRANSPORT_COSTS_DATA.get(route, {})
+    if mode == 'Airplane':
+        unit_cost = route_costs.get('Airplane', 25)
+    else:
+        size_key = size.split(' ')[0]  # Extract 'Small', 'Medium', or 'Large'
+        mode_costs = route_costs.get(mode, {})
+        unit_cost = mode_costs.get(size_key, 10) if isinstance(mode_costs, dict) else 10
+    
+    total_shipping_cost = unit_cost * quantity
+    
+    mcol1, mcol2, mcol3 = st.columns(3)
+    with mcol1:
+        st.metric("Unit Cost", f"${unit_cost:,.2f}")
+    with mcol2:
+        st.metric("Total Cost", f"${total_shipping_cost:,.2f}")
+    with mcol3:
+        # Show expected transit time
+        if mode == 'Airplane':
+            expected = "1 FN (100% reliable)"
+        elif TRANSIT_TIMES_DATA.get(mode, {}).get(route):
+            times = TRANSIT_TIMES_DATA[mode][route]
+            best = min(times.keys())
+            worst = max(times.keys())
+            expected = f"{best}-{worst} FN"
+        else:
+            expected = "2-6 FN (variable)"
+        st.metric("Expected Transit", expected)
 
 
 def render_route_optimizer():
@@ -616,23 +728,47 @@ def render_shipment_builder():
             updated.at[idx, 'Arrival_FN'] = min(order_fn + lead_time, 8)
         st.session_state.logistics_shipments = updated
     
-    # Calculate shipping cost
+    # Calculate shipping cost using Table V.3 route-specific prices
     total_cost = 0
+    cost_breakdown = []
+    
     for _, row in st.session_state.logistics_shipments.iterrows():
+        origin = row['Origin']
+        dest = row['Destination']
         mode = row['Mode']
         qty = row['Quantity']
-        cost_per_unit = TRANSPORT_CONFIG.get(mode, {}).get('cost_per_unit', 10)
-        total_cost += qty * cost_per_unit
+        
+        if qty > 0:
+            cost_per_unit = get_transport_cost(origin, dest, mode, qty)
+            line_cost = qty * cost_per_unit
+            total_cost += line_cost
+            cost_breakdown.append({
+                'Route': f"{origin}-{dest}",
+                'Mode': mode,
+                'Qty': qty,
+                'Unit Cost': cost_per_unit,
+                'Total': line_cost
+            })
     
     st.session_state.shipping_cost = total_cost
     set_state('LOGISTICS_COST', total_cost)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Total Shipping Cost", f"${total_cost:,.0f}")
+        st.metric("Total Shipping Cost (Table V.3)", f"${total_cost:,.0f}")
     with col2:
         total_qty = st.session_state.logistics_shipments['Quantity'].sum()
         st.metric("Total Units Shipped", f"{total_qty:,.0f}")
+    
+    # Show cost breakdown if there are shipments
+    if cost_breakdown:
+        with st.expander("📊 Cost Breakdown (Table V.3 Prices)"):
+            breakdown_df = pd.DataFrame(cost_breakdown)
+            st.dataframe(
+                breakdown_df.style.format({'Unit Cost': '${:.2f}', 'Total': '${:,.2f}'}),
+                hide_index=True,
+                use_container_width=True
+            )
 
 
 def render_upload_ready_logistics():

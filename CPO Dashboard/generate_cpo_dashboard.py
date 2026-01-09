@@ -57,12 +57,11 @@ OUTPUT_FILE = OUTPUT_DIR / "CPO_Dashboard.xlsx"
 # Use centralized constants from case_parameters
 ZONES = COMMON.get('ZONES', ["Center", "West", "North", "East", "South"])
 
-# Default parameters
-# Default parameters from Case if available
+# Default parameters from Case if available (Table VI.1)
 PROD_WORKERS = WORKFORCE.get('PRODUCTION_WORKERS', {})
-DEFAULT_HIRING_FEE = PROD_WORKERS.get('HIRING_COST', 1250)
-DEFAULT_SEVERANCE = PROD_WORKERS.get('FIRING_COST', 2000) # Estimate
-DEFAULT_BASE_SALARY = PROD_WORKERS.get('BASE_SALARY', 650)
+DEFAULT_HIRING_FEE = PROD_WORKERS.get('HIRING_COST', 240)     # Table VI.1: $240
+DEFAULT_SEVERANCE = PROD_WORKERS.get('LAYOFF_COST', 220)      # Table VI.1: $220
+DEFAULT_BASE_SALARY = PROD_WORKERS.get('SALARY_PER_FORTNIGHT', 27.3)  # Table VI.1
 DEFAULT_INFLATION_RATE = 0.03  # Restored to 3% for Strike Risk Calc
 
 # Default benefits structure
@@ -169,7 +168,7 @@ def load_sales_admin(filepath):
         'headcount': 0, 
         'avg_salary': 750,  # Fallback
         'total_salary': 0, 
-        'hiring_cost': 1100 # Fallback
+        'hiring_cost': 240   # Table VI.1: Hiring cost $240
     }
     
     if df is None:
@@ -306,7 +305,7 @@ def create_cpo_dashboard(workers_data, sales_data, labor_data, absenteeism_rate,
     cell.number_format = '$#,##0'
     
     # NEW: Hiring Benchmark
-    bench_cost = sales_data.get('hiring_cost', 1100)
+    bench_cost = sales_data.get('hiring_cost', 240)  # Table VI.1: $240
     ws1['C5'] = f"Benchmark (Sales Hire): ${bench_cost:,.0f}"
     ws1['C5'].font = Font(italic=True, color="666666")
     

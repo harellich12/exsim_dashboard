@@ -1,66 +1,75 @@
 {
   "metadata": {
     "created": "2026-01-04T17:48:51.449955",
-    "last_updated": "2026-01-05T22:03:38.708108",
+    "last_updated": "2026-01-09T14:10:25.752902",
     "version": "1.0"
   },
   "dashboards": {
     "CMO": {
-      "timestamp": "2026-01-05T22:03:36.968212",
+      "timestamp": "2026-01-09T14:10:24.617244",
       "outputs": {
         "demand_forecast": {
-          "Center": 1000,
-          "West": 900,
-          "North": 800,
+          "Center": 8900,
+          "West": 4028,
+          "North": 4400,
           "East": 850,
           "South": 950
         },
         "marketing_spend": 73500.0,
         "pricing": {
-          "Center": 150,
-          "West": 145,
-          "North": 148,
-          "East": 152,
-          "South": 147
+          "Center": 54,
+          "West": 82,
+          "North": 91,
+          "East": 20,
+          "South": 20
         },
-        "innovation_costs": 0.0
+        "innovation_costs": 0.0,
+        "payment_terms": {
+          "Center": "A",
+          "West": "A",
+          "North": "A",
+          "East": "A",
+          "South": "A"
+        }
       }
     },
     "Production": {
-      "timestamp": "2026-01-05T22:03:37.522429",
+      "timestamp": "2026-01-09T14:10:24.867690",
       "outputs": {
         "production_plan": {
           "Center": {
-            "Target": 0
+            "Target": 4448
           },
           "West": {
-            "Target": 0
+            "Target": 2012
           },
           "North": {
-            "Target": 0
+            "Target": 2200
           },
           "East": {
-            "Target": 0
+            "Target": 424
           },
           "South": {
-            "Target": 0
+            "Target": 472
           }
         },
         "capacity_utilization": {
-          "mean": 0.85
+          "mean": 0,
+          "total_capacity": 0,
+          "total_target": 19112
         },
-        "overtime_hours": 0,
+        "overtime_hours": 19112,
         "unit_costs": {
-          "Center": 40,
-          "West": 40,
-          "North": 40,
-          "East": 40,
-          "South": 40
+          "Center": 40.0,
+          "West": 40.0,
+          "North": 40.0,
+          "East": 40.0,
+          "South": 40.0
         }
       }
     },
     "Purchasing": {
-      "timestamp": "2026-01-05T22:03:37.974740",
+      "timestamp": "2026-01-09T14:10:25.062439",
       "outputs": {
         "supplier_spend": "0",
         "inventory_levels": {
@@ -69,7 +78,7 @@
       }
     },
     "CLO": {
-      "timestamp": "2026-01-05T22:03:38.251870",
+      "timestamp": "2026-01-09T14:10:25.314270",
       "outputs": {
         "shipping_schedule": [
           {
@@ -130,16 +139,16 @@
         ],
         "logistics_costs": "0",
         "inventory_by_zone": {
-          "Center": 500,
-          "West": 500,
-          "North": 500,
-          "East": 500,
-          "South": 500
+          "Center": 1112.0,
+          "West": 503.0,
+          "North": 550.0,
+          "East": 106.0,
+          "South": 118.0
         }
       }
     },
     "CPO": {
-      "timestamp": "2026-01-05T22:03:38.268029",
+      "timestamp": "2026-01-09T14:10:25.330800",
       "outputs": {
         "workforce_headcount": {
           "Center": 0,
@@ -153,7 +162,7 @@
       }
     },
     "ESG": {
-      "timestamp": "2026-01-05T22:03:38.549311",
+      "timestamp": "2026-01-09T14:10:25.512189",
       "outputs": {
         "co2_emissions": 0,
         "abatement_investment": 0,
@@ -161,14 +170,14 @@
       }
     },
     "CFO": {
-      "timestamp": "2026-01-05T22:03:38.708108",
+      "timestamp": "2026-01-09T14:10:25.752902",
       "outputs": {
         "cash_flow_projection": {
-          "final_cash": "525000",
-          "tax_payments": 50000
+          "final_cash": 142269.0,
+          "tax_payments": 52346
         },
-        "debt_levels": 1500000,
-        "liquidity_status": "\ud83d\udfe1 Excess Cash"
+        "debt_levels": 839314,
+        "liquidity_status": "\ud83d\udfe2 OK"
       }
     }
   }

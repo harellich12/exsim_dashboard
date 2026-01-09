@@ -287,6 +287,11 @@ def render_bulk_upload():
                     'reason': 'Unrecognized filename'
                 })
         
+        # Reset tab initialization flags so tabs reload with new data
+        if results['loaded']:
+            reset_tab_states()
+            st.success("✅ Dashboard tabs will refresh with new data!")
+        
         # Display results in columns
         col1, col2, col3 = st.columns(3)
         

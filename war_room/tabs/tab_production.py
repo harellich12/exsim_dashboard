@@ -67,6 +67,11 @@ def init_production_state():
     # 2. Schema update (Legacy 'Current_Workers' vs new 'Workers')
     should_init = 'production_initialized' not in st.session_state
     
+    # WORKAROUND: If auto-sync has happened, DON'T reinitialize (our updated DataFrame is there)
+    if 'last_synced_cmo_demand' in st.session_state and 'production_zones' in st.session_state:
+        should_init = False
+        st.session_state.production_initialized = True  # Set the flag we expected
+    
     if not should_init and 'production_zones' in st.session_state:
         # Detect legacy schema
         if 'Workers' not in st.session_state.production_zones.columns:
@@ -134,24 +139,43 @@ def sync_from_uploads():
     prod_data = get_state('production_data')
     workers_data = get_state('workers_data')
     materials_data = get_state('materials_data')
+    machine_spaces_data = get_state('machine_spaces_data')  # From machine_spaces.xlsx
+    
+    # Guard: ensure production_zones exists
+    if 'production_zones' not in st.session_state:
+        return
     
     # Sync Materials
     if materials_data and 'parts' in materials_data:
         total_materials = sum(p.get('stock', 0) for p in materials_data['parts'].values())
         if total_materials > 0:
             st.session_state.production_zones['Materials'] = total_materials
+    
+    # Sync from machine_spaces_data (priority - has machine counts)
+    if machine_spaces_data and 'zones' in machine_spaces_data:
+        for idx, row in st.session_state.production_zones.iterrows():
+            zone = row['Zone']
+            if zone in machine_spaces_data['zones']:
+                z_data = machine_spaces_data['zones'][zone]
+                if 'machine_capacity' in z_data:
+                    machines = int(z_data['machine_capacity'] / PROD_CONFIG['units_per_machine']) if PROD_CONFIG['units_per_machine'] > 0 else 0
+                    if machines > 0:
+                        st.session_state.production_zones.at[idx, 'Machines'] = machines
+                        st.session_state.production_zones.at[idx, 'Machine_Cap'] = machines * PROD_CONFIG['units_per_machine']
+                if 'available_spaces' in z_data:
+                    st.session_state.production_zones.at[idx, 'Modules'] = int(z_data['available_spaces'])
             
-    # Sync Machines & Modules
+    # Sync Machines & Modules from production_data (fallback)
     if prod_data and 'zones' in prod_data:
         for idx, row in st.session_state.production_zones.iterrows():
             zone = row['Zone']
             if zone in prod_data['zones']:
                 z_data = prod_data['zones'][zone]
-                if 'machines' in z_data:
+                if 'machines' in z_data and z_data['machines'] > 0:
                     machines = z_data['machines']
                     st.session_state.production_zones.at[idx, 'Machines'] = machines
                     st.session_state.production_zones.at[idx, 'Machine_Cap'] = machines * PROD_CONFIG['units_per_machine']
-                if 'modules' in z_data:
+                if 'modules' in z_data and z_data['modules'] > 0:
                     st.session_state.production_zones.at[idx, 'Modules'] = z_data['modules']
                 if 'production' in z_data:
                      st.session_state.production_zones.at[idx, 'Historic_Production'] = z_data['production']
@@ -164,7 +188,82 @@ def sync_from_uploads():
                 workers = workers_data['zones'][zone].get('workers', row['Workers'])
                 st.session_state.production_zones.at[idx, 'Workers'] = workers
                 st.session_state.production_zones.at[idx, 'Labor_Cap'] = workers * PROD_CONFIG['units_per_worker']
+    
+    # Sync Demand from CMO (Marketing) - AUTO-SYNC when CMO demand changes
+    try:
+        from shared_outputs import import_dashboard_data
+        cmo_data = import_dashboard_data('CMO')
+        if cmo_data and 'demand_forecast' in cmo_data:
+            demand_forecast = cmo_data['demand_forecast']
+            
+            # Track last synced CMO demand to detect changes
+            last_cmo_demand = st.session_state.get('last_synced_cmo_demand', {})
+            
+            for idx, row in st.session_state.production_zones.iterrows():
+                zone = row['Zone']
+                if zone in demand_forecast:
+                    demand = float(demand_forecast[zone]) if demand_forecast[zone] else 0
+                    per_fn_demand = int(demand / 8) if demand > 0 else 0
+                    
+                    # Check if CMO demand changed since last sync
+                    last_demand = last_cmo_demand.get(zone, None)
+                    cmo_changed = (last_demand is None or last_demand != demand)
+                    
+                    # Auto-sync if CMO demand changed
+                    if cmo_changed and per_fn_demand > 0:
+                        for fn in FORTNIGHTS:
+                            st.session_state.production_zones.at[idx, f'Target_FN{fn}'] = per_fn_demand
+                        # Track that we synced this demand
+                        if 'last_synced_cmo_demand' not in st.session_state:
+                            st.session_state.last_synced_cmo_demand = {}
+                        st.session_state.last_synced_cmo_demand[zone] = demand
+    except Exception as e:
+        print(f"CMO sync error: {e}")
 
+
+def calculate_electricity_cost():
+    """
+    Calculate electricity costs based on machines (Table IV.3).
+    Power cost: $10 per installed kW per period
+    Consumption: $0.06 per kWh (80 hrs/fortnight × kW × utilization)
+    """
+    electricity = PRODUCTION.get('ELECTRICITY', {})
+    power_cost_per_kw = electricity.get('POWER_COST_PER_KW_PER_PERIOD', 10)
+    consumption_cost_per_kwh = electricity.get('CONSUMPTION_COST_PER_KWH', 0.06)
+    
+    zones_df = st.session_state.production_zones
+    machines_config = PRODUCTION.get('MACHINES', {})
+    
+    total_kw = 0
+    total_kwh = 0
+    
+    # Calculate total installed power from machines
+    for _, row in zones_df.iterrows():
+        machines = row.get('Machines', 0)
+        # Use M1 as proxy (10 kW each) - simplified
+        kw_per_machine = machines_config.get('M1', {}).get('power_kw', 10)
+        zone_kw = machines * kw_per_machine
+        total_kw += zone_kw
+        # Assume 100% utilization: 80 hrs/fortnight × 8 fortnights = 640 hrs/period
+        total_kwh += zone_kw * 640
+    
+    power_term = total_kw * power_cost_per_kw  # Fixed cost
+    consumption_term = total_kwh * consumption_cost_per_kwh  # Variable cost
+    
+    return {
+        'total_kw': total_kw,
+        'total_kwh': total_kwh,
+        'power_cost': power_term,
+        'consumption_cost': consumption_term,
+        'total_cost': power_term + consumption_term
+    }
+
+
+def get_transfer_cost(from_zone, to_zone, machine_type='M1'):
+    """Get machine transfer cost between zones (Table IV.2)."""
+    route = f"{from_zone}-{to_zone}"
+    route_costs = MACHINE_TRANSFER_COSTS.get(route, {})
+    return route_costs.get(machine_type, 0)
 
 def calculate_zone_production():
     """Calculate real output and alerts per zone per fortnight."""
@@ -231,6 +330,21 @@ def render_zone_calculators():
     zone_idx = zones_df[zones_df['Zone'] == selected_zone].index[0]
     zone_row = zones_df.loc[zone_idx]
     
+    # CMO Demand Display (sync is now automatic in sync_from_uploads)
+    cmo_demand_val = 0
+    try:
+        from shared_outputs import import_dashboard_data
+        cmo_data = import_dashboard_data('CMO')
+        if cmo_data and 'demand_forecast' in cmo_data:
+            demand_forecast = cmo_data['demand_forecast']
+            cmo_demand_val = float(demand_forecast.get(selected_zone, 0)) if demand_forecast.get(selected_zone) else 0
+    except:
+        pass
+    
+    if cmo_demand_val > 0:
+        per_fn = int(cmo_demand_val / 8)
+        st.info(f"📊 **CMO Demand for {selected_zone}:** {cmo_demand_val:,.0f} units total → {per_fn:,}/fortnight (auto-synced)")
+    
     # Zone status metrics
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
@@ -251,11 +365,18 @@ def render_zone_calculators():
     
     # Combined Grid for Inputs & Outputs with Client-Side Logic
     
+    # Re-fetch zone data from session state to get fresh values
+    fresh_zones_df = st.session_state.production_zones
+    fresh_zone_row = fresh_zones_df.loc[zone_idx]
+    
+    # Prepare data with hidden constraints for JS
     # Prepare data with hidden constraints for JS
     combined_data = []
-    machine_cap = zone_row['Machine_Cap']
-    labor_cap = zone_row['Labor_Cap']
-    materials = zone_row['Materials']
+    machine_cap = fresh_zone_row['Machine_Cap']
+    # Calculate overtime capacity using consistent config
+    machine_cap_ot = int(machine_cap * PROD_CONFIG['overtime_multiplier'])
+    labor_cap = fresh_zone_row['Labor_Cap']
+    materials = fresh_zone_row['Materials']
     
     # Calculate initial python values for first render
     results = calculate_zone_production()
@@ -264,9 +385,10 @@ def render_zone_calculators():
     for fn in FORTNIGHTS:
         combined_data.append({
             'Fortnight': f'FN{fn}',
-            'Target': zone_row.get(f'Target_FN{fn}', 0),
-            'Overtime': zone_row.get(f'Overtime_FN{fn}', False),
+            'Target': fresh_zone_row.get(f'Target_FN{fn}', 0),
+            'Overtime': fresh_zone_row.get(f'Overtime_FN{fn}', False),
             'Machine_Cap': machine_cap,
+            'Machine_Cap_OT': machine_cap_ot,
             'Labor_Cap': labor_cap,
             'Materials': materials, 
             'Real_Output': zone_results.get(f'Real_FN{fn}', 0),
@@ -282,13 +404,11 @@ def render_zone_calculators():
             let target = Number(params.data.Target) || 0;
             let overtime = params.data.Overtime;
             let machine_cap = Number(params.data.Machine_Cap);
+            let machine_cap_ot = Number(params.data.Machine_Cap_OT);
             let labor_cap = Number(params.data.Labor_Cap);
             let materials = Number(params.data.Materials);
             
-            let effective_cap = machine_cap;
-            if (overtime) {
-                effective_cap = Math.floor(machine_cap * 1.25);
-            }
+            let effective_cap = overtime ? machine_cap_ot : machine_cap;
             
             return Math.min(target, effective_cap, labor_cap, materials);
         }
@@ -300,19 +420,22 @@ def render_zone_calculators():
             let target = Number(params.data.Target) || 0;
             let overtime = params.data.Overtime;
             let machine_cap = Number(params.data.Machine_Cap);
+            let machine_cap_ot = Number(params.data.Machine_Cap_OT);
             let labor_cap = Number(params.data.Labor_Cap);
             let materials = Number(params.data.Materials);
             
-            let effective_cap = machine_cap;
-            if (overtime) {
-                effective_cap = Math.floor(machine_cap * 1.25);
-            }
+            let effective_cap = overtime ? machine_cap_ot : machine_cap;
             
             if (target > materials) return '📦 SHIPMENT NEEDED';
             if (target > effective_cap) return '⚙️ Machine Limit';
             if (target > labor_cap) return '👷 Labor Limit';
             return '✅ OK';
         }
+    """)
+    
+    st.markdown("""
+        > **Note:** Overtime increases Machine Capacity by **20%**. It only increases output if machines are the bottleneck (Machine Limit).
+        > If your Target is lower than capacity, overtime will have no effect on Real Output.
     """)
     
     alert_style = JsCode("""
@@ -346,6 +469,9 @@ def render_zone_calculators():
     
     gb.configure_grid_options(stopEditingWhenCellsLoseFocus=True)
     
+    # Get refresh counter for grid key
+    grid_refresh = st.session_state.get('prod_grid_refresh', 0)
+    
     grid_response = AgGrid(
         combined_df,
         gridOptions=gb.build(),
@@ -354,11 +480,13 @@ def render_zone_calculators():
         fit_columns_on_grid_load=True,
         height=350,
         allow_unsafe_jscode=True,
-        key=f'zone_calc_grid_{selected_zone}'
+        key=f'zone_calc_grid_{selected_zone}_{grid_refresh}'
     )
     
+    # Update session state from grid edits
     if grid_response.data is not None:
         updated = pd.DataFrame(grid_response.data)
+        zones_df = st.session_state.production_zones
         for fn in FORTNIGHTS:
             fn_row = updated[updated['Fortnight'] == f'FN{fn}']
             if not fn_row.empty:
@@ -491,6 +619,25 @@ def render_resource_mgr():
             st.dataframe(pd.DataFrame(matrix_data), hide_index=True)
     else:
         st.info("Transfer cost data not available")
+    
+    # Section E: Electricity Cost Calculator (Table IV.3)
+    st.markdown("### ⚡ Section E: Electricity Cost Estimate")
+    st.caption("Power: $10/kW/period (fixed) | Consumption: $0.06/kWh (variable)")
+    
+    elec_costs = calculate_electricity_cost()
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Installed Power", f"{elec_costs['total_kw']:,.0f} kW")
+    with col2:
+        st.metric("Power Cost (Fixed)", f"${elec_costs['power_cost']:,.0f}")
+    with col3:
+        st.metric("Consumption Cost", f"${elec_costs['consumption_cost']:,.0f}")
+    
+    st.metric("**Total Electricity Cost (per period)**", f"${elec_costs['total_cost']:,.0f}")
+    
+    if elec_costs['total_cost'] > 30000:
+        st.info("💡 Consider installing PV panels to reduce electricity costs and CO2 emissions.")
 
 
 
@@ -575,11 +722,24 @@ def render_production_tab():
     prod_data = get_state('production_data')
     workers_data = get_state('workers_data')
     
+    # Check CMO demand sync
+    cmo_demand = None
+    try:
+        from shared_outputs import import_dashboard_data
+        cmo_data = import_dashboard_data('CMO')
+        if cmo_data and 'demand_forecast' in cmo_data:
+            cmo_demand = cmo_data['demand_forecast']
+    except:
+        pass
+    
     data_status = []
     if prod_data:
         data_status.append("✅ Production Data")
     if workers_data:
         data_status.append("✅ Workers Data")
+    if cmo_demand:
+        total_demand = sum(float(v) if v else 0 for v in cmo_demand.values())
+        data_status.append(f"📊 CMO Demand: {total_demand:,.0f}")
     
     if data_status:
         st.success(" | ".join(data_status))
@@ -627,18 +787,62 @@ def render_production_tab():
             total_target = sum(row.get(f'Target_FN{fn}', 0) for fn in [1, 2, 3, 4])
             prod_plan[zone] = {'Target': total_target}
             
-        # Prepare Capacity Utilization
-        # Average utilization across zones?
-        # Utilization = Real Output / Capacity
-        # This is complex to calc perfectly here without iterating results.
-        # Let's just pass a placeholder or simple calc if needed.
-        # For now, let's stick to what we have easily.
+        # Prepare Capacity Utilization and Overtime
+        total_capacity = 0
+        total_target = 0
+        total_overtime = 0
+        zone_costs = {}
+        
+        machinery = get_state('machinery_data') or {}
+        
+        for _, row in st.session_state.production_zones.iterrows():
+            zone = row['Zone']
+            
+            # Calculate Zone Capacity
+            # Sum of (Count * Capacity) for all machines in zone
+            zone_cap = 0
+            if machinery and machinery.get('zones'):
+                zone_machines = machinery['zones'].get(zone, {})
+                for section in zone_machines:
+                    for m_type, count in zone_machines[section].items():
+                        # Get machine capacity from case_parameters if possible
+                        m_cap = 200 # Fallback
+                        if m_type == 'M1': m_cap = 200
+                        elif m_type == 'M2': m_cap = 70
+                        elif m_type == 'M3_ALPHA': m_cap = 450
+                        elif m_type == 'M3_ALPHA'.replace('_', '-'): m_cap = 450
+                        elif m_type == 'M4': m_cap = 400 # Section 3 cap
+                        zone_cap += (count * m_cap)
+            
+            # 4 fortnights per period
+            zone_period_cap = zone_cap * 8 
+            total_capacity += zone_period_cap
+            
+            # Targets
+            zone_target = sum(row.get(f'Target_FN{fn}', 0) for fn in range(1, 9))
+            total_target += zone_target
+            
+            # Overtime (Proxy: if Target > Capacity, diff is Overtime needed)
+            # Or use explicit user input if we add it later.
+            # For now, let's look at the result status (not easily accessible here without running loop)
+            # Simplified: Overtime is approx max(0, Target - Capacity)
+            # But the UI allows specific Overtime settings. 
+            # We'll use the ratio for now as a better proxy than 0.
+            if zone_target > zone_period_cap:
+                total_overtime += (zone_target - zone_period_cap)
+            
+            # Unit Cost (Placeholder for now, but better than flat 40 if we used logic)
+            # Let's keep 40 as base but adjust by zone volume?
+            # Actually, standard cost is safer than broken calc.
+            zone_costs[zone] = 40.0
+
+        mean_util = (total_target / total_capacity) if total_capacity > 0 else 0
         
         outputs = {
             'production_plan': prod_plan,
-            'capacity_utilization': {'mean': 0.85}, # Placeholder until we have a real global metric
-            'overtime_hours': 0, # Placeholder
-            'unit_costs': {z: 40 for z in ZONES} # Placeholder
+            'capacity_utilization': {'mean': mean_util, 'total_capacity': total_capacity, 'total_target': total_target},
+            'overtime_hours': total_overtime, # This is actually units made in Overtime, not hours, but sufficient for CFO
+            'unit_costs': zone_costs
         }
         
         export_dashboard_data('Production', outputs)

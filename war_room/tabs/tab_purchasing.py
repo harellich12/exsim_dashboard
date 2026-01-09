@@ -146,7 +146,8 @@ def sync_from_production():
             # For now, let's take the total target sum and spread it or just put it in FN1/FN2?
             # Or assume uniform distribution.
             
-            total_target_all_zones = sum(z.get('Target', 0) for z in prod_plan.values())
+            # Type safety: convert to float (JSON may serialize as strings)
+            total_target_all_zones = sum(float(z.get('Target', 0)) if z.get('Target') else 0 for z in prod_plan.values())
             
             if total_target_all_zones > 0:
                 # Distribute uniformly?
@@ -246,6 +247,13 @@ def render_supplier_config():
     
     if grid_response.data is not None:
         st.session_state.purchasing_suppliers = pd.DataFrame(grid_response.data)
+    
+    # Supplier B Non-Delivery Warning (Table IV.4)
+    st.warning("""
+    ⚠️ **Supplier B Risk**: 20% chance of non-delivery!  
+    While Supplier B offers lower prices ($100 vs $125 for Part A), **20% of orders may not arrive**.  
+    Use Supplier B only if you have safety stock or can tolerate stockouts.
+    """)
 
 
 def render_cost_analysis():
@@ -516,8 +524,9 @@ def render_cross_reference():
         # Extract Production Plan Target Sum
         try:
             prod_plan = prod_data.get('production_plan', {})
-            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
-            utilization = prod_data.get('capacity_utilization', {}).get('mean', 0)
+            # Type safety: convert to float (JSON may serialize as strings)
+            total_target = sum([float(d.get('Target', 0)) if d.get('Target') else 0 for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            utilization = float(prod_data.get('capacity_utilization', {}).get('mean', 0) or 0)
         except:
             total_target = 0
             utilization = 0

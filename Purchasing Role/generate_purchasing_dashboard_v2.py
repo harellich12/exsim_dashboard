@@ -60,28 +60,29 @@ PIECES = COMMON.get('PIECES', ["Piece 1", "Piece 2", "Piece 3", "Piece 4", "Piec
 SUPPLIERS = ["Supplier A", "Supplier B", "Supplier C"]
 
 # Default supplier configuration
-BOM = PURCHASING.get('BOM_COSTS', {})
+# Default supplier configuration
+# Extract costs from PARTS structure (Supplier A as benchmark)
+PART_A_COST = PURCHASING.get('PARTS', {}).get('Part A', {}).get('suppliers', {}).get('A', {}).get('price', 125)
+PART_B_COST = PURCHASING.get('PARTS', {}).get('Part B', {}).get('suppliers', {}).get('A', {}).get('price', 330)
 
 DEFAULT_SUPPLIERS = {
     "Part A": [
-        {"name": "Supplier A", "lead_time": 0, "cost": BOM.get("Part A", 15), "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier B", "lead_time": 0, "cost": BOM.get("Part A", 15), "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier C", "lead_time": 0, "cost": BOM.get("Part A", 15), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier A", "lead_time": 0, "cost": PART_A_COST, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier B", "lead_time": 0, "cost": PURCHASING.get('PARTS', {}).get('Part A', {}).get('suppliers', {}).get('B', {}).get('price', 100), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier C", "lead_time": 0, "cost": PURCHASING.get('PARTS', {}).get('Part A', {}).get('suppliers', {}).get('C', {}).get('price', 140), "payment_terms": 0, "batch_size": 0},
     ],
     "Part B": [
-        {"name": "Supplier A", "lead_time": 0, "cost": BOM.get("Part B", 25), "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier B", "lead_time": 0, "cost": BOM.get("Part B", 25), "payment_terms": 0, "batch_size": 0},
-        {"name": "Supplier C", "lead_time": 0, "cost": BOM.get("Part B", 25), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier A", "lead_time": 0, "cost": PART_B_COST, "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier B", "lead_time": 0, "cost": PURCHASING.get('PARTS', {}).get('Part B', {}).get('suppliers', {}).get('B', {}).get('price', 264), "payment_terms": 0, "batch_size": 0},
+        {"name": "Supplier C", "lead_time": 0, "cost": PURCHASING.get('PARTS', {}).get('Part B', {}).get('suppliers', {}).get('C', {}).get('price', 370), "payment_terms": 0, "batch_size": 0},
     ]
 }
 
+# Pieces configuration
+PIECES_DATA = PURCHASING.get('PIECES', {})
 DEFAULT_PIECES_CONFIG = {
-    "Piece 1": {"cost": BOM.get("Piece 1", 2), "batch_size": 0},
-    "Piece 2": {"cost": BOM.get("Piece 2", 2), "batch_size": 0},
-    "Piece 3": {"cost": BOM.get("Piece 3", 2), "batch_size": 0},
-    "Piece 4": {"cost": BOM.get("Piece 4", 2), "batch_size": 0},
-    "Piece 5": {"cost": BOM.get("Piece 5", 2), "batch_size": 0},
-    "Piece 6": {"cost": BOM.get("Piece 6", 2), "batch_size": 0},
+    name: {"cost": PIECES_DATA.get(name, {}).get('price', 0), "batch_size": PIECES_DATA.get(name, {}).get('batch_size', 0)}
+    for name in PIECES
 }
 
 
@@ -417,7 +418,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     ws2.cell(row=row, column=1, value="Part A").border = thin_border
     ws2.cell(row=row, column=2, value="=AVERAGE('SUPPLIER CONFIG'!D6:D8)").number_format = '$#,##0.00'
     ws2.cell(row=row, column=2).border = thin_border
-    ws2.cell(row=row, column=3, value=BOM.get('Part A', 15)).number_format = '$#,##0.00' # Target
+    ws2.cell(row=row, column=3, value=PART_A_COST).number_format = '$#,##0.00' # Target
     ws2.cell(row=row, column=3).border = thin_border
     ws2.cell(row=row, column=4, value=f"=IF(C{row}>0, (B{row}-C{row})/C{row}, 0)").number_format = '0.0%'
     ws2.cell(row=row, column=4).border = thin_border
@@ -429,7 +430,7 @@ def create_purchasing_dashboard(materials_data, cost_data, template_data, output
     ws2.cell(row=row, column=1, value="Part B").border = thin_border
     ws2.cell(row=row, column=2, value="=AVERAGE('SUPPLIER CONFIG'!D9:D11)").number_format = '$#,##0.00'
     ws2.cell(row=row, column=2).border = thin_border
-    ws2.cell(row=row, column=3, value=BOM.get('Part B', 25)).number_format = '$#,##0.00'
+    ws2.cell(row=row, column=3, value=PART_B_COST).number_format = '$#,##0.00'
     ws2.cell(row=row, column=3).border = thin_border
     ws2.cell(row=row, column=4, value=f"=IF(C{row}>0, (B{row}-C{row})/C{row}, 0)").number_format = '0.0%'
     ws2.cell(row=row, column=4).border = thin_border

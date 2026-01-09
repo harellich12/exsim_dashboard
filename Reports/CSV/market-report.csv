@@ -1,0 +1,83 @@
+Country: IESE EMBA BCN 26-1,,,,,
+Market Report,Company:Company 3,,,,
+Period: 6,Course: IESE EMBA BCN 26-1,,,,
+       Market Share Per Region (%)    ,,,,,
+Zone,Company 1 A,Company 2 A,Company 3 A,Company 4 A,
+Center,25.0,25.0,25.0,25.0,
+West,25.0,25.0,25.0,25.0,
+North,25.0,25.0,25.0,25.0,
+East,0.0,0.0,0.0,0.0,
+South,0.0,0.0,0.0,0.0,
+,,,,,
+       Market Share Per Region Per Segment (%)    ,,,,,
+Zone,Segment,Company 1 A,Company 2 A,Company 3 A,Company 4 A
+Center,High,25.0,25.0,25.0,25.0
+,Low,25.0,25.0,25.0,25.0
+West,High,25.0,25.0,25.0,25.0
+,Low,25.0,25.0,25.0,25.0
+North,High,25.0,25.0,25.0,25.0
+,Low,25.0,25.0,25.0,25.0
+East,High,0.0,0.0,0.0,0.0
+,Low,0.0,0.0,0.0,0.0
+South,High,0.0,0.0,0.0,0.0
+,Low,0.0,0.0,0.0,0.0
+,,,,,
+       Price    ,,,,,
+Zone,Company 1 A,Company 2 A,Company 3 A,Company 4 A,
+Center,68.00,68.00,68.00,68.00,
+West,68.00,68.00,68.00,68.00,
+North,91.00,91.00,91.00,91.00,
+East,0.00,0.00,0.00,0.00,
+South,0.00,0.00,0.00,0.00,
+,,,,,
+       Product Improvements    ,,,,,
+Improvements,Company 1 - A,Company 2 - A,Company 3 - A,Company 4 - A,
+STAINLESS MATERIAL,?,?,?,?,
+RECYCLABLE MATERIALS,?,?,?,?,
+ENERGY EFFICIENCY,?,?,?,?,
+LIGHTER AND MORE COMPACT,?,?,?,?,
+IMPACT RESISTANCE,?,?,?,?,
+NOISE REDUCTION,?,?,?,?,
+IMPROVED BATTERY CAPACITY,?,?,?,?,
+SELF-CLEANING,?,?,?,?,
+SPEED SETTINGS,?,?,?,?,
+DIGITAL CONTROLS,?,?,?,?,
+VOICE ASSISTANCE INTEGRATION,?,?,?,?,
+AUTOMATION AND PROGRAMMABILITY,?,?,?,?,
+MULTIFUNCTIONAL ACCESSORIES,?,?,?,?,
+MAPPING TECHNOLOGY,?,?,?,?,
+,,,,,
+       Product Awareness Percentage Per Segment    ,,,,,
+Zone,Segment,Company 1 A,Company 2 A,Company 3 A,Company 4 A
+Center,High,42.39,42.39,42.39,42.39
+,Low,28.72,28.72,28.72,28.72
+West,High,34.58,34.58,34.58,34.58
+,Low,22.16,22.16,22.16,22.16
+North,High,26.84,26.84,26.84,26.84
+,Low,23.10,23.10,23.10,23.10
+East,High,0.00,0.00,0.00,0.00
+,Low,0.00,0.00,0.00,0.00
+South,High,0.00,0.00,0.00,0.00
+,Low,0.00,0.00,0.00,0.00
+,,,,,
+       Product attractiveness (Perceived)    ,,,,,
+Zone,Segment,Company 1 A,Company 2 A,Company 3 A,Company 4 A
+Center,High,20.00,20.00,20.00,20.00
+,Low,20.00,20.00,20.00,20.00
+West,High,20.00,20.00,20.00,20.00
+,Low,20.00,20.00,20.00,20.00
+North,High,20.00,20.00,20.00,20.00
+,Low,20.00,20.00,20.00,20.00
+East,High,0.00,0.00,0.00,0.00
+,Low,0.00,0.00,0.00,0.00
+South,High,0.00,0.00,0.00,0.00
+,Low,0.00,0.00,0.00,0.00
+,,,,,
+       Evaluation of the Promotional Impact of Salesforce    ,,,,,
+Zone,Company 1,Company 2,Company 3,Company 4,
+Center,94.44,94.44,94.44,94.44,
+West,81.55,81.55,81.55,81.55,
+North,95.32,95.32,95.32,95.32,
+East,0.00,0.00,0.00,0.00,
+South,0.00,0.00,0.00,0.00,
+,,,,,

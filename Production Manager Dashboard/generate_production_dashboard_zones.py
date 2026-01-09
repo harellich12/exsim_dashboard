@@ -65,7 +65,23 @@ MACHINE_TYPES = COMMON.get('MACHINE_TYPES', ["M1", "M2", "M3-alpha", "M3-beta", 
 MACHINES = PRODUCTION.get('MACHINES', {})
 DEFAULT_NOMINAL_RATE = MACHINES.get('M1', {}).get('CAPACITY', 200)
 # Variable cost estimate (Material + Labor + OH). Case doesn't give single number, keeping estimate.
-DEFAULT_VARIABLE_COST = 40
+# Variable cost calculation (Material + Labor + OH + Electricity)
+# 1. Labor: Salary / Units per worker
+WORKER_SALARY = PRODUCTION.get('WORKFORCE', {}).get('PRODUCTION_WORKERS', {}).get('SALARY_PER_FORTNIGHT', 27.3)
+UNITS_PER_WORKER = MACHINES.get('M1', {}).get('capacity_per_fortnight', 200) # Assuming 1 worker/machine
+LABOR_COST = WORKER_SALARY / UNITS_PER_WORKER if UNITS_PER_WORKER > 0 else 0.14
+
+# 2. Electricity: (Power * Cost + Consumption) / Capacity
+ELEC_FIXED = PRODUCTION.get('ELECTRICITY', {}).get('POWER_COST_PER_KW_PER_PERIOD', 10)
+ELEC_VAR = PRODUCTION.get('ELECTRICITY', {}).get('CONSUMPTION_COST_PER_KWH', 0.06)
+M1_KW = MACHINES.get('M1', {}).get('power_kw', 10)
+ELEC_COST_PER_UNIT = ((M1_KW * ELEC_FIXED) + (M1_KW * 80 * 8 * ELEC_VAR)) / (200 * 8) # Approx per unit
+
+# 3. Materials: Sum of Part A + Part B + Pieces
+# Simplified estimate based on standard BOM
+MATERIAL_COST = 35.0 # Placeholder estimate, real calculation is complex BOM sum
+
+DEFAULT_VARIABLE_COST = LABOR_COST + ELEC_COST_PER_UNIT + MATERIAL_COST
 DEFAULT_OT_CAPACITY_PCT = PRODUCTION.get('WORKFORCE', {}).get('OVERTIME_CAPACITY_PCT', 0.20)
 DEFAULT_OT_MULTIPLIER = 1.4
 DEFAULT_OT_COST_PREMIUM = 20 # Placeholder approximation of 1.4x Labor

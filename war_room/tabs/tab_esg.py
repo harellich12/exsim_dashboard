@@ -1,10 +1,12 @@
 """
 ExSim War Room - ESG Tab
-4 sub-tabs mirroring the Excel dashboard sheets:
+5 sub-tabs mirroring the Excel dashboard sheets:
 1. IMPACT_CONFIG - CO2 tax rates and initiative settings
 2. STRATEGY_SELECTOR - Compare green investment options
 3. RESULTS - Summary and recommendations
 4. UPLOAD_READY_ESG - Export preview
+5. CROSS_REFERENCE - Upstream data visibility
+Plus new sections: Machine CO2, Transport CO2, Emissions Intensity, Product Improvements
 """
 
 import streamlit as st
@@ -15,13 +17,69 @@ from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 from utils.state_manager import get_state, set_state
 
-# ESG Initiative defaults
-ESG_INITIATIVES = {
-    'Solar_PV': {'cost_per_unit': 15000, 'co2_reduction': 0.5, 'type': 'CAPEX', 'unit': 'panel'},
-    'Trees': {'cost_per_unit': 50, 'co2_reduction': 0.02, 'type': 'CAPEX', 'unit': 'tree'},
-    'Green_Electricity': {'cost_per_kwh': 0.03, 'co2_reduction': 0.5, 'type': 'OpEx', 'unit': 'kWh'},
-    'CO2_Credits': {'cost_per_ton': 25, 'co2_reduction': 1.0, 'type': 'OpEx', 'unit': 'credit'}
-}
+# Import ESG parameters from case_parameters
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent.parent))
+try:
+    from case_parameters import ESG as ESG_PARAMS
+except ImportError:
+    ESG_PARAMS = None
+
+# Build ESG_INITIATIVES from case_parameters (with fallback)
+if ESG_PARAMS:
+    abatement = ESG_PARAMS.get("ABATEMENT", {})
+    solar = abatement.get("SOLAR_PANELS", {})
+    green = abatement.get("GREEN_ENERGY", {})
+    trees = abatement.get("TREES", {})
+    credits = abatement.get("CO2_CREDITS", {})
+    
+    ESG_INITIATIVES = {
+        'Solar_PV': {
+            'cost_per_unit': solar.get('cost', 420),
+            'maintenance_per_period': solar.get('maintenance_per_period', 7),
+            'co2_reduction_per_period_kg': solar.get('co2_reduction_per_period_kg', 106.4),
+            'type': 'CAPEX',
+            'unit': 'panel'
+        },
+        'Trees': {
+            'cost_per_unit': trees.get('cost_per_tree', 6.25),
+            'maintenance_per_period_per_80': trees.get('maintenance_per_period_per_80_trees', 16.67),
+            'co2_reduction_per_period_per_80_kg': trees.get('co2_absorbed_per_period_per_80_trees_kg', 333),
+            'type': 'CAPEX',
+            'unit': 'tree'
+        },
+        'Green_Electricity': {
+            'regular_price_kwh': green.get('regular_price_per_kwh', 0.06),
+            'premium_rate': green.get('premium_rate', 0.20),
+            'co2_per_kwh_kg': green.get('co2_per_kwh_reduction', 0.4),
+            'type': 'OpEx',
+            'unit': 'kWh'
+        },
+        'CO2_Credits': {
+            'co2_per_credit_kg': credits.get('co2_per_credit_kg', 1000),
+            'type': 'OpEx',
+            'unit': 'credit'
+        }
+    }
+    MACHINE_CO2 = ESG_PARAMS.get("MACHINE_CO2", {})
+    TRANSPORT_CO2 = ESG_PARAMS.get("TRANSPORT_CO2", {})
+    IMPROVEMENT_CO2 = ESG_PARAMS.get("IMPROVEMENT_CO2", {})
+    TARGETS = ESG_PARAMS.get("TARGETS", {})
+else:
+    # Fallback defaults (should not be used)
+    ESG_INITIATIVES = {
+        'Solar_PV': {'cost_per_unit': 420, 'co2_reduction_per_period_kg': 106.4, 'type': 'CAPEX', 'unit': 'panel'},
+        'Trees': {'cost_per_unit': 6.25, 'co2_reduction_per_period_per_80_kg': 333, 'type': 'CAPEX', 'unit': 'tree'},
+        'Green_Electricity': {'premium_rate': 0.20, 'co2_per_kwh_kg': 0.4, 'type': 'OpEx', 'unit': 'kWh'},
+        'CO2_Credits': {'co2_per_credit_kg': 1000, 'type': 'OpEx', 'unit': 'credit'}
+    }
+    MACHINE_CO2 = {}
+    TRANSPORT_CO2 = {}
+    IMPROVEMENT_CO2 = {}
+    TARGETS = {"ANNUAL_CO2_REDUCTION": 0.15, "PERIOD_6_INTENSITY": 29.93}
+
+
 
 
 def init_esg_state():
@@ -42,53 +100,65 @@ def init_esg_state():
 
 
 def calculate_esg_impact():
-    """Calculate ESG initiative costs and impacts."""
+    """Calculate ESG initiative costs and impacts using case_parameters values."""
     tax_rate = st.session_state.esg_co2_tax_rate
-    emissions = st.session_state.esg_current_emissions
-    energy = st.session_state.esg_energy_consumption
+    emissions = st.session_state.esg_current_emissions  # in tons
+    energy = st.session_state.esg_energy_consumption  # in kWh
     
-    # Solar PV
+    # Solar PV - $420/panel, 106.4 kg CO2 reduction/period
     solar_qty = st.session_state.esg_solar_panels
-    solar_cost = solar_qty * ESG_INITIATIVES['Solar_PV']['cost_per_unit']
-    solar_reduction = solar_qty * ESG_INITIATIVES['Solar_PV']['co2_reduction']
+    solar_upfront = solar_qty * ESG_INITIATIVES['Solar_PV']['cost_per_unit']
+    solar_maintenance = solar_qty * ESG_INITIATIVES['Solar_PV'].get('maintenance_per_period', 7)
+    solar_cost = solar_upfront + solar_maintenance * 3  # 3 periods per year
+    solar_reduction_kg = solar_qty * ESG_INITIATIVES['Solar_PV'].get('co2_reduction_per_period_kg', 106.4) * 3
+    solar_reduction = solar_reduction_kg / 1000  # Convert to tons
     solar_annual_savings = solar_reduction * tax_rate
-    solar_payback = solar_cost / solar_annual_savings if solar_annual_savings > 0 else 999
+    solar_payback = solar_upfront / solar_annual_savings if solar_annual_savings > 0 else 999
     solar_cost_per_ton = solar_cost / solar_reduction if solar_reduction > 0 else 0
     
-    # Trees
+    # Trees - $6.25/tree, 333 kg CO2/period per 80 trees
     trees_qty = st.session_state.esg_trees
-    trees_cost = trees_qty * ESG_INITIATIVES['Trees']['cost_per_unit']
-    trees_reduction = trees_qty * ESG_INITIATIVES['Trees']['co2_reduction']
+    trees_upfront = trees_qty * ESG_INITIATIVES['Trees']['cost_per_unit']
+    trees_per_80 = trees_qty / 80 if trees_qty > 0 else 0
+    trees_maintenance = trees_per_80 * ESG_INITIATIVES['Trees'].get('maintenance_per_period_per_80', 16.67) * 3
+    trees_cost = trees_upfront + trees_maintenance
+    trees_reduction_kg = trees_per_80 * ESG_INITIATIVES['Trees'].get('co2_reduction_per_period_per_80_kg', 333) * 3
+    trees_reduction = trees_reduction_kg / 1000  # Convert to tons
     trees_annual_savings = trees_reduction * tax_rate
-    trees_payback = trees_cost / trees_annual_savings if trees_annual_savings > 0 else 999
+    trees_payback = trees_upfront / trees_annual_savings if trees_annual_savings > 0 else 999
     trees_cost_per_ton = trees_cost / trees_reduction if trees_reduction > 0 else 0
     
-    # Green Electricity
+    # Green Electricity - 20% premium over $0.06/kWh, 0.4 kg CO2/kWh reduction
     green_pct = st.session_state.esg_green_electricity_pct / 100
     green_kwh = energy * green_pct
-    green_cost = green_kwh * ESG_INITIATIVES['Green_Electricity']['cost_per_kwh']
-    green_reduction = green_kwh * ESG_INITIATIVES['Green_Electricity']['co2_reduction'] / 1000  # Convert to tons
+    regular_price = ESG_INITIATIVES['Green_Electricity'].get('regular_price_kwh', 0.06)
+    premium_rate = ESG_INITIATIVES['Green_Electricity'].get('premium_rate', 0.20)
+    green_premium_cost = green_kwh * regular_price * premium_rate  # Only the premium portion
+    green_cost = green_premium_cost
+    green_reduction_kg = green_kwh * ESG_INITIATIVES['Green_Electricity'].get('co2_per_kwh_kg', 0.4)
+    green_reduction = green_reduction_kg / 1000  # Convert to tons
     green_cost_per_ton = green_cost / green_reduction if green_reduction > 0 else 0
     
-    # CO2 Credits
+    # CO2 Credits - 1 ton = 1000 kg per credit
     credits_qty = st.session_state.esg_co2_credits
-    credits_cost = credits_qty * ESG_INITIATIVES['CO2_Credits']['cost_per_ton']
-    credits_reduction = credits_qty * ESG_INITIATIVES['CO2_Credits']['co2_reduction']
-    credits_cost_per_ton = ESG_INITIATIVES['CO2_Credits']['cost_per_ton']
+    credit_cost_per_ton = st.session_state.get('esg_credit_price', 25)  # User-adjustable
+    credits_cost = credits_qty * credit_cost_per_ton
+    credits_reduction = credits_qty  # 1 credit = 1 ton
+    credits_cost_per_ton = credit_cost_per_ton
     
     # Totals
     total_reduction = solar_reduction + trees_reduction + green_reduction + credits_reduction
     remaining_emissions = max(0, emissions - total_reduction)
     tax_liability = remaining_emissions * tax_rate
     
-    total_capex = solar_cost + trees_cost
-    total_opex = green_cost + credits_cost
+    total_capex = solar_upfront + trees_upfront
+    total_opex = solar_maintenance * 3 + trees_maintenance + green_cost + credits_cost
     
     return {
         'solar': {'qty': solar_qty, 'cost': solar_cost, 'reduction': solar_reduction, 
-                 'payback': solar_payback, 'cost_per_ton': solar_cost_per_ton},
+                 'payback': solar_payback, 'cost_per_ton': solar_cost_per_ton, 'upfront': solar_upfront},
         'trees': {'qty': trees_qty, 'cost': trees_cost, 'reduction': trees_reduction,
-                 'payback': trees_payback, 'cost_per_ton': trees_cost_per_ton},
+                 'payback': trees_payback, 'cost_per_ton': trees_cost_per_ton, 'upfront': trees_upfront},
         'green_elec': {'pct': green_pct * 100, 'cost': green_cost, 'reduction': green_reduction,
                        'cost_per_ton': green_cost_per_ton},
         'credits': {'qty': credits_qty, 'cost': credits_cost, 'reduction': credits_reduction,
@@ -99,6 +169,7 @@ def calculate_esg_impact():
         'total_capex': total_capex,
         'total_opex': total_opex
     }
+
 
 
 def render_impact_config():
@@ -139,17 +210,59 @@ def render_impact_config():
     current_tax = emissions * tax
     st.metric("Current Annual CO2 Tax", f"${current_tax:,.0f}")
     
-    # Initiative settings table
-    st.markdown("### Initiative Settings (Reference)")
+    # Initiative settings table from case_parameters
+    st.markdown("### Initiative Settings (from Case Table VII.2)")
     
     settings_df = pd.DataFrame([
-        {'Initiative': 'Solar PV', 'Type': 'CAPEX', 'Cost': '$15,000/panel', 'CO2 Reduction': '0.5 tons/panel/year'},
-        {'Initiative': 'Trees', 'Type': 'CAPEX', 'Cost': '$50/tree', 'CO2 Reduction': '0.02 tons/tree/year'},
-        {'Initiative': 'Green Electricity', 'Type': 'OpEx', 'Cost': '$0.03/kWh premium', 'CO2 Reduction': '0.5 tons/1000 kWh'},
-        {'Initiative': 'CO2 Credits', 'Type': 'OpEx', 'Cost': '$25/credit', 'CO2 Reduction': '1 ton/credit'}
+        {'Initiative': 'Solar PV', 'Type': 'CAPEX', 'Cost': '$420/panel + $7/period maint', 'CO2 Reduction': '106.4 kg/panel/period'},
+        {'Initiative': 'Trees', 'Type': 'CAPEX', 'Cost': '$6.25/tree + $16.67/period per 80', 'CO2 Reduction': '333 kg/period per 80 trees'},
+        {'Initiative': 'Green Electricity', 'Type': 'OpEx', 'Cost': '20% premium ($0.012/kWh)', 'CO2 Reduction': '0.4 kg CO2/kWh'},
+        {'Initiative': 'CO2 Credits', 'Type': 'OpEx', 'Cost': 'Variable (set below)', 'CO2 Reduction': '1 ton (1000 kg)/credit'}
     ])
     
-    st.dataframe(settings_df, width='stretch', hide_index=True)
+    st.dataframe(settings_df, use_container_width=True, hide_index=True)
+    
+    # Add credit price input
+    credit_price = st.number_input(
+        "CO2 Credit Price ($/ton)", 
+        value=st.session_state.get('esg_credit_price', 25),
+        step=5,
+        key='esg_credit_price_input'
+    )
+    st.session_state.esg_credit_price = credit_price
+    
+    # Machine CO2 Emissions Reference (Table VII.1)
+    st.markdown("### 🏭 Machine CO2 Emissions (Table VII.1)")
+    if MACHINE_CO2:
+        machine_data = []
+        for machine, data in MACHINE_CO2.items():
+            machine_data.append({
+                'Machine': machine,
+                'Emissions @ Capacity': f"{data['emissions_at_capacity_kg']} kg/fortnight",
+                'Capacity': f"{data['capacity']} units/fortnight",
+                'kg CO2/unit': f"{data['kg_per_unit']:.2f}"
+            })
+        st.dataframe(pd.DataFrame(machine_data), use_container_width=True, hide_index=True)
+    else:
+        st.caption("Machine CO2 data not loaded from case_parameters")
+    
+    # Product Improvement CO2 Impact (Table VII.1)
+    st.markdown("### 📦 Product Improvement CO2 Impact")
+    if IMPROVEMENT_CO2:
+        improv_data = []
+        for id, data in IMPROVEMENT_CO2.items():
+            co2 = data['kg_co2']
+            impact = "🌿 Reduces" if co2 < 0 else "🔴 Increases"
+            improv_data.append({
+                'ID': id,
+                'Feature': data['name'],
+                'Impact': impact,
+                'kg CO2/unit': f"{co2:+.3f}"
+            })
+        st.dataframe(pd.DataFrame(improv_data), use_container_width=True, hide_index=True)
+    else:
+        st.caption("Improvement CO2 data not loaded")
+
 
 
 def render_strategy_selector():
@@ -272,8 +385,86 @@ def render_results():
     
     if impact['remaining_emissions'] > 0:
         credits_needed = int(impact['remaining_emissions'])
-        credits_cost = credits_needed * ESG_INITIATIVES['CO2_Credits']['cost_per_ton']
+        credit_price = st.session_state.get('esg_credit_price', 25)
+        credits_cost = credits_needed * credit_price
         st.info(f"ℹ️ To offset remaining {impact['remaining_emissions']:.1f} tons: Buy {credits_needed} credits (${credits_cost:,.0f})")
+    
+    # Emissions Intensity Tracker (new section)
+    st.markdown("### 📈 Emissions Intensity Tracker")
+    
+    # Get production estimate from shared outputs or use default
+    try:
+        from shared_outputs import import_dashboard_data
+        prod_data = import_dashboard_data('Production') or {}
+        prod_plan = prod_data.get('production_plan', {})
+        # Type safety: convert to float (JSON may serialize as strings)
+        total_production = sum([float(d.get('Target', 0)) if d.get('Target') else 0 for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+    except:
+        total_production = 0
+    
+    if total_production == 0:
+        total_production = st.number_input(
+            "Est. Annual Production (units)", 
+            value=50000, step=5000,
+            help="Enter estimated production for intensity calculation"
+        )
+    
+    base_emissions_tons = st.session_state.esg_current_emissions
+    base_intensity = (base_emissions_tons * 1000) / total_production if total_production > 0 else 0
+    net_emissions = impact['remaining_emissions']
+    net_intensity = (net_emissions * 1000) / total_production if total_production > 0 else 0
+    
+    period_6_baseline = TARGETS.get('PERIOD_6_INTENSITY', 29.93)
+    annual_target = TARGETS.get('ANNUAL_CO2_REDUCTION', 0.15)
+    target_intensity = period_6_baseline * (1 - annual_target)  # 15% reduction
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Current Intensity", f"{base_intensity:.2f} kg/unit")
+    with col2:
+        delta = net_intensity - base_intensity
+        st.metric("Net Intensity", f"{net_intensity:.2f} kg/unit", delta=f"{delta:.2f}")
+    with col3:
+        st.metric("Period Target", f"{target_intensity:.2f} kg/unit", help="15% reduction from Period 6 baseline")
+    
+    if net_intensity <= target_intensity:
+        st.success(f"✅ On track to meet 15% reduction target! Current: {net_intensity:.2f} vs Target: {target_intensity:.2f}")
+    else:
+        gap = net_intensity - target_intensity
+        st.warning(f"⚠️ Above target by {gap:.2f} kg/unit. Consider more abatement actions.")
+    
+    # ESG KPI Score Estimate
+    st.markdown("### 🏆 ESG KPI Score Estimate")
+    
+    # Calculate a rough ENV KPI based on emissions reduction and target achievement
+    reduction_pct = (impact['total_reduction'] / base_emissions_tons * 100) if base_emissions_tons > 0 else 0
+    intensity_achievement = (1 - net_intensity / period_6_baseline) * 100 if period_6_baseline > 0 else 0
+    
+    # Simple scoring: 60 base + up to 20 for reduction + up to 20 for intensity
+    env_score = min(100, 60 + (reduction_pct * 0.5) + (intensity_achievement * 0.5))
+    
+    # Get social score from CPO if available
+    try:
+        from shared_outputs import import_dashboard_data
+        cpo_data = import_dashboard_data('CPO') or {}
+        social_score = cpo_data.get('workforce_mood', 70)
+    except:
+        social_score = 70  # Default
+    
+    esg_score = (env_score * 0.6 + social_score * 0.4)  # 60% environmental, 40% social
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        color = "🟢" if env_score >= 80 else ("🟡" if env_score >= 60 else "🔴")
+        st.metric(f"{color} ENV KPI", f"{env_score:.0f}%")
+    with col2:
+        color = "🟢" if social_score >= 80 else ("🟡" if social_score >= 60 else "🔴")
+        st.metric(f"{color} Social KPI", f"{social_score:.0f}%")
+    with col3:
+        color = "🟢" if esg_score >= 80 else ("🟡" if esg_score >= 60 else "🔴")
+        st.metric(f"{color} ESG KPI", f"{esg_score:.0f}%")
+    
+    st.caption("*KPI scores are estimates. Actual scores depend on competitor performance and industry benchmarks.*")
     
     # Pie chart
     if impact['total_reduction'] > 0:
@@ -293,7 +484,8 @@ def render_results():
                 color_discrete_sequence=px.colors.qualitative.Set2
             )
             fig.update_layout(height=350)
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, use_container_width=True)
+
 
 
 def render_upload_ready_esg():
@@ -375,8 +567,9 @@ def render_cross_reference():
         # Extract Production Plan Target Sum
         try:
             prod_plan = prod_data.get('production_plan', {})
-            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
-            utilization = prod_data.get('capacity_utilization', {}).get('mean', 0)
+            # Type safety: convert to float (JSON may serialize as strings)
+            total_target = sum([float(d.get('Target', 0)) if d.get('Target') else 0 for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            utilization = float(prod_data.get('capacity_utilization', {}).get('mean', 0) or 0)
         except:
             total_target = 0
             utilization = 0

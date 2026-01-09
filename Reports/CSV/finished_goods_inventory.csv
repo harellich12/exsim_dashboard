@@ -1,0 +1,53 @@
+Country: IESE EMBA BCN 26-1,,,,,,,,,,,
+Finished Goods Inventory,Company:Company 3,,,,,,,,,,
+Period: 6,Course: IESE EMBA BCN 26-1,,,,,,,,,,
+                 Finished Goods Inventory            ,,,,,,,,,,,
+Capacity: 4800, Previous, 1, 2, 3, 4, 5, 6, 7, 8,Total,In transit
+Initial inventory,,"3,862","4,791","3,041","4,541","1,135","2,635","1,910","3,410",,
+Receptions,,0,0,0,0,0,0,0,0,0,0
+Production,,"1,500","1,500","1,500","1,500","1,500","1,500","1,500","1,500","12,000",
+Shipments,,571,"1,025",0,"2,681",0,0,0,0,"4,277",
+Sales,,0,"2,225",0,"2,225",0,"2,225",0,"2,225","8,900",
+Final inventory,"3,862","4,791","3,041","4,541","1,135","2,635","1,910","3,410","2,685",,
+Thrown away,0,0,0,0,0,0,0,0,0,0,
+,,,,,,,,,,,
+                 Finished Goods Inventory            ,,,,,,,,,,,
+Capacity: 2500, Previous, 1, 2, 3, 4, 5, 6, 7, 8,Total,In transit
+Initial inventory,,"1,816","2,166","1,509","2,430","1,773","2,123","1,466","1,886",,
+Receptions,,0,0,571,0,0,0,0,0,571,0
+Production,,350,350,350,350,350,350,420,420,"2,940",
+Shipments,,0,0,0,0,0,0,0,0,0,
+Sales,,0,"1,007",0,"1,007",0,"1,007",0,"1,007","4,028",
+Final inventory,"1,816","2,166","1,509","2,430","1,773","2,123","1,466","1,886","1,299",,
+Thrown away,0,0,0,0,0,0,0,0,0,0,
+,,,,,,,,,,,
+                 Finished Goods Inventory            ,,,,,,,,,,,
+Capacity: 2000, Previous, 1, 2, 3, 4, 5, 6, 7, 8,Total,In transit
+Initial inventory,,"1,314","1,314",214,214,139,139,"1,720","1,720",,
+Receptions,,0,0,0,"1,025",0,"2,681",0,0,"3,706",0
+Production,,0,0,0,0,0,0,0,0,0,
+Shipments,,0,0,0,0,0,0,0,0,0,
+Sales,,0,"1,100",0,"1,100",0,"1,100",0,"1,100","4,400",
+Final inventory,"1,314","1,314",214,214,139,139,"1,720","1,720",620,,
+Thrown away,0,0,0,0,0,0,0,0,0,0,
+,,,,,,,,,,,
+                 Finished Goods Inventory            ,,,,,,,,,,,
+Capacity: 0, Previous, 1, 2, 3, 4, 5, 6, 7, 8,Total,In transit
+Initial inventory,,0,0,0,0,0,0,0,0,,
+Receptions,,0,0,0,0,0,0,0,0,0,0
+Production,,0,0,0,0,0,0,0,0,0,
+Shipments,,0,0,0,0,0,0,0,0,0,
+Sales,,0,0,0,0,0,0,0,0,0,
+Final inventory,0,0,0,0,0,0,0,0,0,,
+Thrown away,0,0,0,0,0,0,0,0,0,0,
+,,,,,,,,,,,
+                 Finished Goods Inventory            ,,,,,,,,,,,
+Capacity: 0, Previous, 1, 2, 3, 4, 5, 6, 7, 8,Total,In transit
+Initial inventory,,0,0,0,0,0,0,0,0,,
+Receptions,,0,0,0,0,0,0,0,0,0,0
+Production,,0,0,0,0,0,0,0,0,0,
+Shipments,,0,0,0,0,0,0,0,0,0,
+Sales,,0,0,0,0,0,0,0,0,0,
+Final inventory,0,0,0,0,0,0,0,0,0,,
+Thrown away,0,0,0,0,0,0,0,0,0,0,
+,,,,,,,,,,,

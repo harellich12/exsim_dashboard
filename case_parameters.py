@@ -378,6 +378,37 @@ LOGISTICS = {
         }
     },
     
+    # Table V.4 - Transit Times & Reliability
+    # Airplane: Always 1 fortnight, 100% reliable
+    # Truck/Train: Probability distribution of delivery fortnights
+    "TRANSIT_TIMES": {
+        "Airplane": {"fortnights": 1, "reliability": 1.00},  # Always delivers in 1 FN
+        "Truck": {
+            "Center-West": {2: 0.70, 3: 0.30},
+            "Center-North": {2: 0.50, 3: 0.50},
+            "Center-East": {4: 0.40, 5: 0.40, 6: 0.20},
+            "Center-South": {2: 0.60, 3: 0.40},
+            "West-North": {2: 0.55, 3: 0.45},
+            "West-East": {3: 0.40, 4: 0.40, 5: 0.20},
+            "West-South": {3: 0.50, 4: 0.50},
+            "North-East": {3: 0.50, 4: 0.50},
+            "North-South": {3: 0.40, 4: 0.40, 5: 0.20},
+            "East-South": {5: 0.50, 6: 0.50}
+        },
+        "Train": {
+            "Center-West": {3: 0.60, 4: 0.40},
+            "Center-North": {4: 0.50, 5: 0.50},
+            "Center-East": {5: 0.30, 6: 0.40, 7: 0.30},
+            "Center-South": {3: 0.50, 4: 0.50},
+            "West-North": {4: 0.50, 5: 0.50},
+            "West-East": {4: 0.40, 5: 0.40, 6: 0.20},
+            "West-South": {4: 0.40, 5: 0.40, 6: 0.20},
+            "North-East": {4: 0.40, 5: 0.40, 6: 0.20},
+            "North-South": {5: 0.40, 6: 0.40, 7: 0.20},
+            "East-South": {6: 0.40, 7: 0.40, 8: 0.20}
+        }
+    },
+    
     # CO2 Emissions from Transport (Table VII.1) - kg CO2 per Electroclean
     "TRANSPORT_CO2": {
         "Center-West":  {"Airplane": 16.00, "Truck": {"Small": 5.00, "Medium": 4.67, "Large": 4.33}, "Train": {"Small": 1.30, "Medium": 1.18, "Large": 1.06}},
@@ -436,6 +467,22 @@ PURCHASING = {
         "Assembly B": {"holding_cost": 0.40},
         "Assembly C": {"holding_cost": 0.60},
         "Assembly D": {"holding_cost": 0.20}
+    },
+    
+    # Table IV.5 - Initial Raw Materials Inventory (Period 7)
+    "INITIAL_INVENTORY": {
+        "Center": {
+            "Part A": 3496, "Part B": 765,
+            "Piece 1": 94, "Piece 2": 3844, "Piece 3": 3125,
+            "Piece 4": 6131, "Piece 5": 16736, "Piece 6": 14687,
+            "Assembly A": 1045, "Assembly B": 789, "Assembly C": 1207, "Assembly D": 702
+        },
+        "West": {
+            "Part A": 1016, "Part B": 293,
+            "Piece 1": 36, "Piece 2": 1424, "Piece 3": 1208,
+            "Piece 4": 2356, "Piece 5": 6456, "Piece 6": 5699,
+            "Assembly A": 408, "Assembly B": 304, "Assembly C": 466, "Assembly D": 269
+        }
     }
 }
 
@@ -449,9 +496,78 @@ ESG = {
         "Part B": {"Supplier A": 5.46, "Supplier B": 8.33, "Supplier C": 5.33}
     },
     
+    # Table VII.1 - Machine CO2 emissions (kg CO2/unit produced)
+    "MACHINE_CO2": {
+        "M1": {"emissions_at_capacity_kg": 320, "capacity": 200, "kg_per_unit": 1.60},
+        "M2": {"emissions_at_capacity_kg": 288, "capacity": 70, "kg_per_unit": 4.11},
+        "M3_alpha": {"emissions_at_capacity_kg": 480, "capacity": 450, "kg_per_unit": 1.07},
+        "M3_beta": {"emissions_at_capacity_kg": 512, "capacity": 600, "kg_per_unit": 0.85},
+        "M4_S3": {"emissions_at_capacity_kg": 192, "capacity": 400, "kg_per_unit": 0.48},
+        "M4_S4": {"emissions_at_capacity_kg": 192, "capacity": 150, "kg_per_unit": 1.28},
+        "M4_S5": {"emissions_at_capacity_kg": 192, "capacity": 130, "kg_per_unit": 1.48}
+    },
+    "ELECTRICITY_CO2_FACTOR": 0.4,  # kg CO2 per kWh
+    
     # Table VII.1 - Other emissions
     "FACTORY_MODULE_CO2": 405000,  # kg CO2 per new module (distributed over 12 periods)
     "ELECTROCLEAN_DISPOSAL_CO2": 13.2,  # 12 kg recycling + 1.2 kg transport
+    
+    # Table VII.1 - Transport CO2 (kg CO2/electroclean by route and mode)
+    "TRANSPORT_CO2": {
+        "Central-Western": {"Airplane": {"Small": 16.00, "Medium": 5.00, "Large": 4.67}, 
+                           "Truck": {"Small": 4.33, "Medium": 4.67, "Large": 4.33},
+                           "Train": {"Small": 1.30, "Medium": 1.18, "Large": 1.06}},
+        "Central-Northern": {"Airplane": {"Small": 22.00, "Medium": 5.60, "Large": 5.27},
+                            "Truck": {"Small": 5.13, "Medium": 5.27, "Large": 5.13},
+                            "Train": {"Small": 1.94, "Medium": 1.80, "Large": 1.42}},
+        "Central-Eastern": {"Airplane": {"Small": 41.00, "Medium": 13.20, "Large": 12.09},
+                           "Truck": {"Small": 11.33, "Medium": 12.09, "Large": 11.33},
+                           "Train": {"Small": 4.56, "Medium": 4.14, "Large": 3.90}},
+        "Central-Southern": {"Airplane": {"Small": 20.00, "Medium": 5.00, "Large": 4.67},
+                            "Truck": {"Small": 4.53, "Medium": 4.67, "Large": 4.53},
+                            "Train": {"Small": 1.65, "Medium": 1.54, "Large": 1.25}},
+        "Western-Northern": {"Airplane": {"Small": 21.00, "Medium": 6.13, "Large": 6.00},
+                            "Truck": {"Small": 5.00, "Medium": 6.00, "Large": 5.00},
+                            "Train": {"Small": 2.01, "Medium": 1.77, "Large": 1.65}},
+        "Western-Eastern": {"Airplane": {"Small": 24.00, "Medium": 7.87, "Large": 7.67},
+                           "Truck": {"Small": 7.40, "Medium": 7.67, "Large": 7.40},
+                           "Train": {"Small": 2.72, "Medium": 2.60, "Large": 2.41}},
+        "Western-Southern": {"Airplane": {"Small": 29.00, "Medium": 9.33, "Large": 9.00},
+                            "Truck": {"Small": 8.67, "Medium": 9.00, "Large": 8.67},
+                            "Train": {"Small": 3.19, "Medium": 2.84, "Large": 2.36}},
+        "Northern-Eastern": {"Airplane": {"Small": 29.00, "Medium": 9.33, "Large": 8.67},
+                            "Truck": {"Small": 8.00, "Medium": 8.67, "Large": 8.00},
+                            "Train": {"Small": 3.19, "Medium": 2.84, "Large": 2.36}},
+        "Northern-Southern": {"Airplane": {"Small": 36.00, "Medium": 10.67, "Large": 10.33},
+                             "Truck": {"Small": 10.00, "Medium": 10.33, "Large": 10.00},
+                             "Train": {"Small": 3.78, "Medium": 3.55, "Large": 2.84}},
+        "Eastern-Southern": {"Airplane": {"Small": 58.00, "Medium": 18.00, "Large": 16.33},
+                            "Truck": {"Small": 16.00, "Medium": 16.33, "Large": 16.00},
+                            "Train": {"Small": 6.26, "Medium": 5.67, "Large": 5.55}}
+    },
+    
+    # Machine transport correction factors (% of electroclean emissions)
+    "MACHINE_TRANSPORT_FACTORS": {
+        "M1": 50.0, "M2": 43.75, "M3_alpha": 75.0, "M3_beta": 93.75, "M4": 18.75
+    },
+    
+    # Table VII.1 - Product improvement emissions (kg CO2/unit)
+    "IMPROVEMENT_CO2": {
+        1: {"name": "Stainless Material", "kg_co2": -0.025},
+        2: {"name": "Recyclable Materials", "kg_co2": 0.023},
+        3: {"name": "Energy Efficiency", "kg_co2": -0.025},
+        4: {"name": "Lighter and More Compact", "kg_co2": 0.045},
+        5: {"name": "Impact-Resistance", "kg_co2": -0.05},
+        6: {"name": "Noise Reduction", "kg_co2": 0.045},
+        7: {"name": "Improved Battery Capacity", "kg_co2": -0.075},
+        8: {"name": "Self-Cleaning", "kg_co2": 0.068},
+        9: {"name": "Speed Settings", "kg_co2": 0.068},
+        10: {"name": "Digital Controls", "kg_co2": -0.075},
+        11: {"name": "Voice Assistance Integration", "kg_co2": 0.107},
+        12: {"name": "Automation and Programmability", "kg_co2": 0.107},
+        13: {"name": "Multifunctional Accessories", "kg_co2": 0.143},
+        14: {"name": "Mapping Technology", "kg_co2": 0.143}
+    },
     
     # Table VII.2 - CO2 Abatement Actions
     "ABATEMENT": {
@@ -463,6 +579,7 @@ ESG = {
             "co2_reduction_per_period_kg": 106.4
         },
         "GREEN_ENERGY": {
+            "regular_price_per_kwh": 0.06,
             "premium_rate": 0.20,  # 20% over regular price
             "co2_per_kwh_reduction": 0.4
         },
@@ -470,11 +587,171 @@ ESG = {
             "cost_per_tree": 6.25,
             "maintenance_per_period_per_80_trees": 16.67,
             "co2_absorbed_per_period_per_80_trees_kg": 333
+        },
+        "CO2_CREDITS": {
+            "co2_per_credit_kg": 1000  # 1 ton = 1000 kg
         }
     },
     
     # Board targets
     "TARGETS": {
-        "ANNUAL_CO2_REDUCTION": 0.15  # 15% year-over-year reduction required
+        "ANNUAL_CO2_REDUCTION": 0.15,  # 15% year-over-year reduction required
+        "PERIOD_6_INTENSITY": 29.93  # kg CO2/unit baseline (example from case)
+    }
+}
+
+# =============================================================================
+# 8. FINANCE PARAMETERS (Chapter VIII)
+# =============================================================================
+FINANCE = {
+    # Table VIII.1 - Financing Options (Period 7)
+    "LINE_OF_CREDIT": {
+        "interest_rate_per_period": 0.10,  # 10% per period
+        "limit_pct_net_assets": 0.33,  # 33% of net fixed assets
+        "current_balance": 113000,
+        "net_fixed_assets_p6": 697625,  # For calculating limit
+        "calculated_limit": 230216  # $697,625 * 0.33
+    },
+    
+    "SHORT_TERM_DEPOSITS": {
+        "interest_rate_per_period": 0.04,  # 4% per period
+        "limit": None,  # No limit
+        "current_balance": 200000
+    },
+    
+    "MORTGAGES": {
+        "interest_rate_per_period": 0.06,  # 6% per period
+        "limit": 800000,
+        "current_balance": 500000,
+        "payment_schedule": [
+            {"period": 10, "amount": 240000},
+            {"period": 12, "amount": 130000},
+            {"period": 18, "amount": 130000}
+        ]
+    },
+    
+    "EMERGENCY_LOAN": {
+        "interest_rate_per_period": 0.30,  # 30% per period - very high!
+        "warning": "Deliberate use = de facto bankruptcy"
+    },
+    
+    # Table VIII.3 - Accounts Payable (Beginning of Period 7)
+    "INITIAL_AP": {
+        2: 17468,   # Due in fortnight 2
+        3: 61630,   # Due in fortnight 3
+        5: 11620,   # Due in fortnight 5
+        6: 53250    # Due in fortnight 6
+    },
+    
+    # Table VIII.4 - Accounts Receivable (Beginning of Period 7)
+    "INITIAL_AR": {
+        2: 295885.30  # Due in fortnight 2
+    },
+    
+    # Table VIII.2 - Payment Schedule Summary
+    "PAYMENT_TIMING": {
+        "INITIAL": [
+            "Supplier payments (pieces)", "Warehouse rental", "Equipment purchases",
+            "Machine transfers", "Module leasing", "Product improvements",
+            "Hiring/layoff costs", "Profit sharing", "Green investments",
+            "Tax payments", "Mortgage interest", "Mortgage repayment",
+            "Shares issued", "Dividend payments"
+        ],
+        "PER_FORTNIGHT": [
+            "Energy costs", "Inventory holding", "Salaries", "Overtime",
+            "Indirect labor", "Labor benefits", "Solar/tree maintenance",
+            "Green energy", "Credit line interest", "Deposit interest"
+        ],
+        "SALES_FORTNIGHTS": [2, 4, 6, 8],  # Customer payments in these FNs
+        "ORDERING_FORTNIGHTS": "Per order"  # Parts payments when ordered
+    },
+    
+    # Cash flow timing constants
+    "CASH_FLOW": {
+        "initial_cash_p6": 500000,  # Approximate starting cash
+        "min_cash_buffer": 50000    # Recommended safety buffer
+    }
+}
+
+# =============================================================================
+# 9. COMPANY REPORTS (Chapter IX)
+# =============================================================================
+FINANCIAL_STATEMENTS = {
+    # Table IX.1 - Income Statement (Period 6 and Full Year 2)
+    "INCOME_STATEMENT": {
+        "NET_SALES": 1183541,
+        "COGS": 481439,
+        "GROSS_INCOME": 702101,
+        "EXPENSES": {
+            "warehouse": 74400,
+            "freight": 64839,
+            "installation": 0,
+            "hiring_firing": 1100,
+            "machine_rental": 0,
+            "social": 0,
+            "sales_admin": 316200,
+            "energy": 29518,
+            "co2_abatement": 0,
+            "disposal": 0
+        },
+        "EBITDA": 216043,
+        "DEPRECIATION": {
+            "plant_equip": 60312,
+            "improvements": 0,
+            "esg": 0
+        },
+        "OPERATING_INCOME": 155730,
+        "FINANCIAL_EXPENSES": {
+            "credit_line_interest": 26037,
+            "mortgage_interest": 30000,
+            "emergency_interest": 0,
+            "investment_income": 5000,
+            "total_net": 51037
+        },
+        "NET_PROFIT_BEFORE_TAX": 104693,
+        "TAXES": 52346,
+        "NET_PROFIT": 52346
+    },
+    
+    # Table IX.2 - Balance Sheet (End of Period 6)
+    "BALANCE_SHEET": {
+        "ASSETS": {
+            "CURRENT": {
+                "cash": 219615,
+                "investments": 200000,
+                "receivables": 295885,
+                "inventory_rm": 70149,
+                "inventory_wip": 308876,
+                "inventory_fp": 132791,
+                "total_inventory": 511817,
+                "total_current": 1227318
+            },
+            "FIXED": {
+                "plant_equip_gross": 1059500,
+                "esg_gross": 0,
+                "intangible_gross": 0,
+                "accumulated_depreciation": 361875,
+                "net_fixed": 697625
+            },
+            "TOTAL_ASSETS": 1924943
+        },
+        "LIABILITIES_EQUITY": {
+            "LIABILITIES": {
+                "payables": 143968,
+                "credit_line": 113000,
+                "interest_payable": 30000,
+                "emergency_loan": 0,
+                "mortgage_loans": 500000,
+                "taxes_payable": 52346,
+                "total_liabilities": 839314
+            },
+            "EQUITY": {
+                "issued_capital": 850000,
+                "retained_earnings": 183281,
+                "period_profit": 52346,
+                "total_equity": 1085628
+            },
+            "TOTAL_LIABILITIES_EQUITY": 1924943
+        }
     }
 }

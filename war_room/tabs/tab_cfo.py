@@ -1,11 +1,12 @@
 """
 ExSim War Room - CFO (Finance) Tab
-5 sub-tabs mirroring the Excel dashboard sheets:
+6 sub-tabs mirroring the Excel dashboard sheets:
 1. LIQUIDITY_MONITOR - Cash flow by fortnight
 2. PROFIT_CONTROL - Income statement projection vs actuals
 3. BALANCE_SHEET_HEALTH - Debt ratio tracking
-4. DEBT_MANAGER - Mortgage calculator
+4. DEBT_MANAGER - Mortgage calculator with Table VIII.1 data
 5. UPLOAD_READY_FINANCE - Export preview
+6. CROSS_REFERENCE - Upstream data visibility
 """
 
 import streamlit as st
@@ -21,14 +22,32 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 try:
-    from case_parameters import COMMON, PRODUCTION
+    from case_parameters import COMMON, PRODUCTION, FINANCE, FINANCIAL_STATEMENTS
     FORTNIGHTS = COMMON.get('FORTNIGHTS', list(range(1, 9)))
 except ImportError:
     FORTNIGHTS = list(range(1, 9))
     PRODUCTION = {}
+    FINANCE = {}
+    FINANCIAL_STATEMENTS = {}
 
-ST_LIMIT = 500000  # Short-term debt limit
-LT_LIMIT = 2000000  # Long-term debt limit
+# Get limits from case_parameters (Table VIII.1) or use fallback
+if FINANCE:
+    credit_line = FINANCE.get('LINE_OF_CREDIT', {})
+    mortgages = FINANCE.get('MORTGAGES', {})
+    ST_LIMIT = credit_line.get('calculated_limit', 230216)  # 33% of net assets
+    LT_LIMIT = mortgages.get('limit', 800000)
+    CREDIT_RATE = credit_line.get('interest_rate_per_period', 0.10)
+    MORTGAGE_RATE = mortgages.get('interest_rate_per_period', 0.06)
+    DEPOSIT_RATE = FINANCE.get('SHORT_TERM_DEPOSITS', {}).get('interest_rate_per_period', 0.04)
+    EMERGENCY_RATE = FINANCE.get('EMERGENCY_LOAN', {}).get('interest_rate_per_period', 0.30)
+else:
+    ST_LIMIT = 230216  # From Table VIII.1
+    LT_LIMIT = 800000
+    CREDIT_RATE = 0.10
+    MORTGAGE_RATE = 0.06
+    DEPOSIT_RATE = 0.04
+    EMERGENCY_RATE = 0.30
+
 DEFAULT_TAX_RATE = 0.25
 
 
@@ -71,25 +90,60 @@ def calculate_projected_costs():
 
 
 def init_cfo_state():
-    """Initialize CFO state with proper financial data structures."""
+    """Initialize CFO state with proper financial data structures from case_parameters."""
     if 'cfo_initialized' not in st.session_state:
         st.session_state.cfo_initialized = True
         
         # Balance data from upload
         balance = get_state('balance_data')
         
-        # Section A: Initialization (from initial_cash_flow.xlsx)
-        st.session_state.cfo_cash_at_end_last_period = 500000
-        st.session_state.cfo_tax_payments = 50000
+        # Section A: Initialization (from Chapter IX Financial Statements)
+        # Verify CASH matches Table IX.2 ($219,615)
+        st.session_state.cfo_cash_at_end_last_period = FINANCIAL_STATEMENTS.get('BALANCE_SHEET', {}).get('ASSETS', {}).get('CURRENT', {}).get('cash', 219615)
+        st.session_state.cfo_tax_payments = FINANCIAL_STATEMENTS.get('INCOME_STATEMENT', {}).get('TAXES', 52346)
         st.session_state.cfo_dividend_payments = 0
         st.session_state.cfo_asset_purchases = 0
         
-        # Section B: Operational Cash Flow (8 fortnights)
+        # Get initial AP/AR from case_parameters (Tables VIII.3 & VIII.4)
+        initial_ap = FINANCE.get('INITIAL_AP', {})
+        initial_ar = FINANCE.get('INITIAL_AR', {})
+        
+        # Section B: Operational Cash Flow (8 fortnights) with AP/AR pre-populated
+        ar_values = {f'FN{fn}': initial_ar.get(fn, 0) for fn in FORTNIGHTS}
+        ap_values = {f'FN{fn}': initial_ap.get(fn, 0) for fn in FORTNIGHTS}
+        
+        # Calculate Sales Receipts from CMO data (Table VIII.2 - Customer payments in FN 2,4,6,8)
+        # First try to get CMO-based receivables, otherwise use Initial AR as starting point
+        try:
+            cmo_receivables = calculate_receivables_from_cmo()
+            sales_receipts = {f'FN{fn}': cmo_receivables.get(fn, 0) for fn in FORTNIGHTS}
+            # If CMO data gives zeros, use Initial AR for FN2 and estimate others
+            if sum(sales_receipts.values()) == 0:
+                # Use Period 6 Net Sales / 4 for each sales fortnight (FN2, FN4, FN6, FN8)
+                p6_sales = FINANCIAL_STATEMENTS.get('INCOME_STATEMENT', {}).get('NET_SALES', 1183541)
+                sales_per_fn = p6_sales / 4  # ~$296K per sales FN
+                sales_receipts = {
+                    'FN1': 0, 'FN2': sales_per_fn, 'FN3': 0, 'FN4': sales_per_fn,
+                    'FN5': 0, 'FN6': sales_per_fn, 'FN7': 0, 'FN8': sales_per_fn
+                }
+        except:
+            # Fallback: Use Period 6 Net Sales divided by 4 sales fortnights
+            p6_sales = FINANCIAL_STATEMENTS.get('INCOME_STATEMENT', {}).get('NET_SALES', 1183541)
+            sales_per_fn = p6_sales / 4
+            sales_receipts = {
+                'FN1': 0, 'FN2': sales_per_fn, 'FN3': 0, 'FN4': sales_per_fn,
+                'FN5': 0, 'FN6': sales_per_fn, 'FN7': 0, 'FN8': sales_per_fn
+            }
+        
         st.session_state.cfo_cash_flow = pd.DataFrame({
             'Item': ['Sales Receipts', 'Procurement Spend', 'Fixed Overhead (S&A)', 
                     'Receivables (HARD)', 'Payables (HARD)'],
-            **{f'FN{fn}': [100000, 0, 25000, 0, 0] for fn in FORTNIGHTS}
+            **{f'FN{fn}': [sales_receipts[f'FN{fn}'], 0, 25000, ar_values[f'FN{fn}'], ap_values[f'FN{fn}']] for fn in FORTNIGHTS}
         })
+        
+        # Credit line starting balance from Table VIII.1
+        credit_balance = FINANCE.get('LINE_OF_CREDIT', {}).get('current_balance', 113000)
+        deposit_balance = FINANCE.get('SHORT_TERM_DEPOSITS', {}).get('current_balance', 200000)
         
         # Section C: Financing Decisions (8 fortnights)
         st.session_state.cfo_financing = pd.DataFrame({
@@ -98,7 +152,15 @@ def init_cfo_state():
             **{f'FN{fn}': [0, 0, 0, 0] for fn in FORTNIGHTS}
         })
         
-        # Balance data
+        # Store credit/deposit balances
+        st.session_state.cfo_credit_line_balance = credit_balance
+        st.session_state.cfo_deposit_balance = deposit_balance
+        
+        # Balance data - Now using REAL data from Chapter IX instead of placeholders
+        income = FINANCIAL_STATEMENTS.get('INCOME_STATEMENT', {})
+        balance_sheet = FINANCIAL_STATEMENTS.get('BALANCE_SHEET', {})
+        
+        # If balance data uploaded, use it (priority), otherwise use Chapter IX defaults
         if balance:
             st.session_state.cfo_net_sales = balance.get('net_sales', 1000000)
             st.session_state.cfo_cogs = balance.get('cogs', 600000)
@@ -110,30 +172,101 @@ def init_cfo_state():
             st.session_state.cfo_gross_margin_pct = balance.get('gross_margin_pct', 0.4)
             st.session_state.cfo_net_margin_pct = balance.get('net_margin_pct', 0.1)
         else:
-            st.session_state.cfo_net_sales = 1000000
-            st.session_state.cfo_cogs = 600000
-            st.session_state.cfo_gross_margin = 400000
-            st.session_state.cfo_net_profit = 100000
-            st.session_state.cfo_total_assets = 4000000
-            st.session_state.cfo_total_liabilities = 1500000
-            st.session_state.cfo_retained_earnings = 200000
-            st.session_state.cfo_gross_margin_pct = 0.4
-            st.session_state.cfo_net_margin_pct = 0.1
+            st.session_state.cfo_net_sales = income.get('NET_SALES', 1183541)
+            st.session_state.cfo_cogs = income.get('COGS', 481439)
+            st.session_state.cfo_gross_margin = income.get('GROSS_INCOME', 702101)
+            st.session_state.cfo_net_profit = income.get('NET_PROFIT', 52346)
+            
+            total_assets = balance_sheet.get('ASSETS', {}).get('TOTAL_ASSETS', 1924943)
+            st.session_state.cfo_total_assets = total_assets
+            
+            total_liabilities = balance_sheet.get('LIABILITIES_EQUITY', {}).get('LIABILITIES', {}).get('total_liabilities', 839314)
+            st.session_state.cfo_total_liabilities = total_liabilities
+            
+            retained = balance_sheet.get('LIABILITIES_EQUITY', {}).get('EQUITY', {}).get('retained_earnings', 183281)
+            st.session_state.cfo_retained_earnings = retained
+            
+            # Calculate margins
+            sales = st.session_state.cfo_net_sales
+            if sales > 0:
+                st.session_state.cfo_gross_margin_pct = st.session_state.cfo_gross_margin / sales
+                st.session_state.cfo_net_margin_pct = st.session_state.cfo_net_profit / sales
+            else:
+                st.session_state.cfo_gross_margin_pct = 0.59  # ~$702k/$1.18M
+                st.session_state.cfo_net_margin_pct = 0.04    # ~$52k/$1.18M
+
         
-        # Mortgages
+        # Mortgages from Table VIII.1 - pre-populated with actual data
+        mortgage_balance = FINANCE.get('MORTGAGES', {}).get('current_balance', 500000)
         st.session_state.cfo_mortgages = pd.DataFrame({
-            'Loan': ['Loan 1', 'Loan 2', 'Loan 3'],
-            'Amount': [0, 0, 0],
-            'Interest_Rate': [0.08, 0.08, 0.08],
-            'Payment_FN1': [0, 0, 0],
-            'Payment_FN2': [0, 0, 0]
+            'Loan': ['Current Mortgage', 'New Loan 1', 'New Loan 2'],
+            'Amount': [mortgage_balance, 0, 0],
+            'Interest_Rate': [MORTGAGE_RATE, MORTGAGE_RATE, MORTGAGE_RATE],
+            'Payment_Period': [10, 0, 0],  # Period 10 for first payment
+            'Payment_Amount': [240000, 0, 0]  # From payment schedule
         })
 
+
+
+def calculate_receivables_from_cmo():
+    """
+    Calculate receivables schedule based on CMO payment terms (Table III.3).
+    Sales occur in even fortnights (2, 4, 6, 8), collection is delayed by payment term.
+    
+    Returns: dict {fn: amount} for fortnights 1-8
+    """
+    try:
+        from shared_outputs import import_dashboard_data
+        from case_parameters import COMMON
+        
+        cmo_data = import_dashboard_data('CMO') or {}
+        payment_terms_config = COMMON.get('PAYMENT_TERMS', {
+            'A': {'fortnights': 0, 'discount': 0.130},
+            'B': {'fortnights': 2, 'discount': 0.075},
+            'C': {'fortnights': 4, 'discount': 0.025},
+            'D': {'fortnights': 8, 'discount': 0.000}
+        })
+        
+        receivables = {fn: 0 for fn in range(1, 9)}
+        
+        demand_forecast = cmo_data.get('demand_forecast', {})
+        pricing = cmo_data.get('pricing', {})
+        payment_terms = cmo_data.get('payment_terms', {})
+        
+        for zone in demand_forecast.keys():
+            # Convert to float for type safety (JSON may serialize as strings)
+            demand = float(demand_forecast.get(zone, 0)) if demand_forecast.get(zone) else 0
+            price = float(pricing.get(zone, 100)) if pricing.get(zone) else 100
+            term_code = payment_terms.get(zone, 'D')  # Default to D (no discount, 8 fortnight delay)
+            
+            term_config = payment_terms_config.get(term_code, payment_terms_config['D'])
+            delay = term_config['fortnights']
+            discount = term_config['discount']
+            
+            # Revenue per period after discount
+            revenue_per_zone = demand * price * (1 - discount)
+            # Sales occur in even fortnights (2, 4, 6, 8) - split revenue evenly
+            sales_per_fortnight = revenue_per_zone / 4
+            
+            for sale_fn in [2, 4, 6, 8]:
+                collect_fn = sale_fn + delay
+                if 1 <= collect_fn <= 8:
+                    receivables[collect_fn] += sales_per_fortnight
+        
+        return receivables
+        
+    except Exception as e:
+        print(f"Error calculating receivables from CMO: {e}")
+        return {fn: 0 for fn in range(1, 9)}
 
 def sync_from_uploads():
     """Sync CFO data from uploaded files."""
     balance = get_state('balance_data')
     ar_ap_data = get_state('ar_ap_data')
+    
+    # Guard: ensure cfo state exists
+    if 'cfo_cash_flow' not in st.session_state:
+        return
     
     if balance:
         st.session_state.cfo_net_sales = balance.get('net_sales', st.session_state.cfo_net_sales)
@@ -576,28 +709,72 @@ def render_balance_sheet_health():
 
 
 def render_debt_manager():
-    """Render DEBT_MANAGER sub-tab - Mortgage calculator."""
-    st.subheader("🏠 DEBT MANAGER - Mortgage Calculator")
+    """Render DEBT_MANAGER sub-tab - Financing options from Table VIII.1."""
+    st.subheader("🏦 DEBT MANAGER - Financing Options (Table VIII.1)")
     
-    st.info(f"💡 Long-Term Debt Limit: ${LT_LIMIT:,.0f}")
+    # Financing Options Reference Table
+    st.markdown("### 📊 Available Financing Options")
+    
+    financing_df = pd.DataFrame([
+        {'Option': 'Line of Credit', 'Interest': f'{CREDIT_RATE*100:.0f}%', 
+         'Limit': f'33% net assets (${ST_LIMIT:,.0f})', 'Current': f'${FINANCE.get("LINE_OF_CREDIT", {}).get("current_balance", 113000):,.0f}',
+         'Timing': 'Per fortnight'},
+        {'Option': 'Short-term Deposits', 'Interest': f'{DEPOSIT_RATE*100:.0f}%', 
+         'Limit': 'No limit', 'Current': f'${FINANCE.get("SHORT_TERM_DEPOSITS", {}).get("current_balance", 200000):,.0f}',
+         'Timing': 'Per fortnight'},
+        {'Option': 'Mortgages', 'Interest': f'{MORTGAGE_RATE*100:.0f}%', 
+         'Limit': f'${LT_LIMIT:,.0f}', 'Current': f'${FINANCE.get("MORTGAGES", {}).get("current_balance", 500000):,.0f}',
+         'Timing': 'Per period'},
+        {'Option': '⚠️ Emergency Loan', 'Interest': f'{EMERGENCY_RATE*100:.0f}%', 
+         'Limit': 'Auto if negative cash', 'Current': '$0',
+         'Timing': 'AVOID!'}
+    ])
+    st.dataframe(financing_df, use_container_width=True, hide_index=True)
+    
+    # Emergency Loan Warning
+    st.error("⚠️ **Emergency Loan Warning**: 30% interest rate! Deliberate use = de facto bankruptcy. Maintain positive cash at all times!")
+    
+    # Credit Line Calculator
+    st.markdown("### 💳 Credit Line Calculator")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        net_assets = st.number_input(
+            "Net Fixed Assets ($)", 
+            value=FINANCE.get('LINE_OF_CREDIT', {}).get('net_fixed_assets_p6', 697625),
+            step=10000,
+            help="From Period 6 balance sheet"
+        )
+    with col2:
+        credit_limit = net_assets * 0.33
+        st.metric("Credit Limit (33%)", f"${credit_limit:,.0f}")
+    with col3:
+        current_used = FINANCE.get('LINE_OF_CREDIT', {}).get('current_balance', 113000)
+        available = credit_limit - current_used
+        st.metric("Available Credit", f"${available:,.0f}")
+    
+    if available < 50000:
+        st.warning("⚠️ Low available credit! Consider reducing credit line usage or increasing assets.")
+    
+    # Mortgage Manager
+    st.markdown("### 🏠 Mortgage Manager")
+    st.info(f"💡 Long-Term Debt Limit: ${LT_LIMIT:,.0f} | Interest Rate: {MORTGAGE_RATE*100:.0f}% per period")
     
     EDITABLE_STYLE = {'backgroundColor': '#E3F2FD', 'color': '#1565C0'}
     
     mortgage_df = st.session_state.cfo_mortgages.copy()
     
     gb = GridOptionsBuilder.from_dataframe(mortgage_df)
-    gb.configure_column('Loan', editable=False, width=80)
+    gb.configure_column('Loan', editable=False, width=120)
     gb.configure_column('Amount', editable=True, width=120, 
                        type=['numericColumn'],
                        valueFormatter="'$' + value.toLocaleString()",
                        cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Interest_Rate', headerName='Interest Rate', editable=True, width=100,
+    gb.configure_column('Interest_Rate', headerName='Interest Rate', editable=False, width=100,
                        valueFormatter="(value * 100).toFixed(1) + '%'")
-    gb.configure_column('Payment_FN1', headerName='Payment FN1', editable=True, width=110,
-                       type=['numericColumn'],
-                       valueFormatter="'$' + value.toLocaleString()",
+    gb.configure_column('Payment_Period', headerName='Payment Period', editable=True, width=110,
                        cellStyle=EDITABLE_STYLE)
-    gb.configure_column('Payment_FN2', headerName='Payment FN2', editable=True, width=110,
+    gb.configure_column('Payment_Amount', headerName='Payment Amount', editable=True, width=120,
                        type=['numericColumn'],
                        valueFormatter="'$' + value.toLocaleString()",
                        cellStyle=EDITABLE_STYLE)
@@ -619,19 +796,28 @@ def render_debt_manager():
     
     # Totals
     total_borrowed = mortgage_df['Amount'].sum()
-    total_payments = mortgage_df['Payment_FN1'].sum() + mortgage_df['Payment_FN2'].sum()
+    
+    # Mortgage Payment Schedule from Table VIII.1
+    st.markdown("### 📅 Payment Schedule (from Table VIII.1)")
+    schedule = FINANCE.get('MORTGAGES', {}).get('payment_schedule', [])
+    if schedule:
+        schedule_df = pd.DataFrame(schedule)
+        schedule_df.columns = ['Period', 'Amount']
+        schedule_df['Amount'] = schedule_df['Amount'].apply(lambda x: f"${x:,.0f}")
+        st.dataframe(schedule_df, use_container_width=True, hide_index=True)
     
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Total Borrowed", f"${total_borrowed:,.0f}")
     with col2:
-        st.metric("Total Payments", f"${total_payments:,.0f}")
+        interest_per_period = total_borrowed * MORTGAGE_RATE
+        st.metric("Interest (per period)", f"${interest_per_period:,.0f}")
     with col3:
-        remaining = total_borrowed - total_payments
-        st.metric("Outstanding", f"${remaining:,.0f}")
+        st.metric("Remaining Limit", f"${max(0, LT_LIMIT - total_borrowed):,.0f}")
     
     if total_borrowed > LT_LIMIT:
         st.error(f"⚠️ Exceeds Long-Term Limit by ${total_borrowed - LT_LIMIT:,.0f}")
+
 
 
 def render_upload_ready_finance():

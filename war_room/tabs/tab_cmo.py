@@ -135,7 +135,9 @@ def sync_from_market_data():
             if last_sales > 0:
                 strategy_df.at[idx, 'Last_Sales'] = last_sales
                 # Also default Target_Demand to Last_Sales if not yet set
-                if strategy_df.at[idx, 'Target_Demand'] in [0, 1000, 900, 800, 850, 950]:
+                current_demand = strategy_df.at[idx, 'Target_Demand']
+                # Handle NA/null values and default values
+                if pd.isna(current_demand) or current_demand in [0, 1000, 900, 800, 850, 950]:
                     strategy_df.at[idx, 'Target_Demand'] = last_sales
         
         # --- From Finished Goods Inventory ---
@@ -765,8 +767,9 @@ def render_cross_reference():
         # Extract Production Plan Target Sum
         try:
             prod_plan = prod_data.get('production_plan', {})
-            total_target = sum([d.get('Target', 0) for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
-            utilization = prod_data.get('capacity_utilization', {}).get('mean', 0)
+            # Type safety: convert Target values to float (may be strings from JSON)
+            total_target = sum([float(d.get('Target', 0)) if d.get('Target') else 0 for d in prod_plan.values()]) if isinstance(prod_plan, dict) else 0
+            utilization = float(prod_data.get('capacity_utilization', {}).get('mean', 0) or 0)
         except:
             total_target = 0
             utilization = 0

@@ -1,0 +1,126 @@
+Country: IESE EMBA BCN 26-1,,,,,,,,,,,,
+Machines and Spaces,Company:Company 3,,,,,,,,,,,
+Period: 6,Course: IESE EMBA BCN 26-1,,,,,,,,,,,
+                 Machine Control            ,,,,,,,,,,,,
+Machine type,Acquisition Cost,Purchase period,Sale period,Depreciation period,Period Amortization / Leasing,Amortization amount left,Initial Machines,Machines Sent,Machines Received,Machines Available,,
+M1,74200,1,-,6/10,7420,29680,7,0,0,7,,
+Total M1,74200,,,,7420,29680,7,0,0,7,,
+M2,154000,1,-,6/10,15400,61600,22,0,0,22,,
+Total M2,154000,,,,15400,61600,22,0,0,22,,
+M3-alpha,265500,1,-,6/20,13275,185850,3,0,0,3,,
+Total M3-alpha,265500,,,,13275,185850,3,0,0,3,,
+Total M3-beta,0,,,,0,0,0,0,0,0,,
+M4,62500,1,-,6/8,7812,15625,25,0,0,25,,
+Total M4,62500,,,,7812,15625,25,0,0,25,,
+,,,,,,,,,,,,
+                 Machines Summary            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+M1,7,7,7,7,7,7,,,,,,
+M2,22,22,22,22,22,22,,,,,,
+M3-alpha,3,3,3,3,3,3,,,,,,
+M3-beta,,,,,,,,,,,,
+M4,25,25,25,25,25,25,,,,,,
+,,,,,,,,,,,,
+                 Spaces            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+Occupied,69,69,69,69,69,69,0,0,0,0,0,0
+Available,72,72,72,72,72,72,0,0,0,0,0,0
+Leased,0,0,0,0,0,0,0,0,0,0,0,0
+Total,72,72,72,72,72,72,0,0,0,0,0,0
+,,,,,,,,,,,,
+                 Machine Control            ,,,,,,,,,,,,
+Machine type,Acquisition Cost,Purchase period,Sale period,Depreciation period,Period Amortization / Leasing,Amortization amount left,Initial Machines,Machines Sent,Machines Received,Machines Available,,
+M1,31800,1,-,6/10,3180,12720,3,0,0,3,,
+Total M1,31800,,,,3180,12720,3,0,0,3,,
+M2,63000,1,-,6/10,6300,25200,9,0,0,9,,
+Total M2,63000,,,,6300,25200,9,0,0,9,,
+M3-alpha,88500,1,-,6/20,4425,61950,1,0,0,1,,
+Total M3-alpha,88500,,,,4425,61950,1,0,0,1,,
+Total M3-beta,0,,,,0,0,0,0,0,0,,
+M4,20000,1,-,6/8,2500,5000,8,0,0,8,,
+Total M4,20000,,,,2500,5000,8,0,0,8,,
+,,,,,,,,,,,,
+                 Machines Summary            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+M1,3,3,3,3,3,3,,,,,,
+M2,9,9,9,9,9,9,,,,,,
+M3-alpha,1,1,1,1,1,1,,,,,,
+M3-beta,,,,,,,,,,,,
+M4,8,8,8,8,8,8,,,,,,
+,,,,,,,,,,,,
+                 Spaces            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+Occupied,25,25,25,25,25,25,0,0,0,0,0,0
+Available,36,36,36,36,36,36,0,0,0,0,0,0
+Leased,0,0,0,0,0,0,0,0,0,0,0,0
+Total,36,36,36,36,36,36,0,0,0,0,0,0
+,,,,,,,,,,,,
+                 Machine Control            ,,,,,,,,,,,,
+Machine type,Acquisition Cost,Purchase period,Sale period,Depreciation period,Period Amortization / Leasing,Amortization amount left,Initial Machines,Machines Sent,Machines Received,Machines Available,,
+Total M1,0,,,,0,0,0,0,0,0,,
+Total M2,0,,,,0,0,0,0,0,0,,
+Total M3-alpha,0,,,,0,0,0,0,0,0,,
+Total M3-beta,0,,,,0,0,0,0,0,0,,
+Total M4,0,,,,0,0,0,0,0,0,,
+,,,,,,,,,,,,
+                 Machines Summary            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+M1,,,,,,,,,,,,
+M2,,,,,,,,,,,,
+M3-alpha,,,,,,,,,,,,
+M3-beta,,,,,,,,,,,,
+M4,,,,,,,,,,,,
+,,,,,,,,,,,,
+                 Spaces            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+Occupied,0,0,0,0,0,0,0,0,0,0,0,0
+Available,0,0,0,0,0,0,0,0,0,0,0,0
+Leased,0,0,0,0,0,0,0,0,0,0,0,0
+Total,0,0,0,0,0,0,0,0,0,0,0,0
+,,,,,,,,,,,,
+                 Machine Control            ,,,,,,,,,,,,
+Machine type,Acquisition Cost,Purchase period,Sale period,Depreciation period,Period Amortization / Leasing,Amortization amount left,Initial Machines,Machines Sent,Machines Received,Machines Available,,
+Total M1,0,,,,0,0,0,0,0,0,,
+Total M2,0,,,,0,0,0,0,0,0,,
+Total M3-alpha,0,,,,0,0,0,0,0,0,,
+Total M3-beta,0,,,,0,0,0,0,0,0,,
+Total M4,0,,,,0,0,0,0,0,0,,
+,,,,,,,,,,,,
+                 Machines Summary            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+M1,,,,,,,,,,,,
+M2,,,,,,,,,,,,
+M3-alpha,,,,,,,,,,,,
+M3-beta,,,,,,,,,,,,
+M4,,,,,,,,,,,,
+,,,,,,,,,,,,
+                 Spaces            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+Occupied,0,0,0,0,0,0,0,0,0,0,0,0
+Available,0,0,0,0,0,0,0,0,0,0,0,0
+Leased,0,0,0,0,0,0,0,0,0,0,0,0
+Total,0,0,0,0,0,0,0,0,0,0,0,0
+,,,,,,,,,,,,
+                 Machine Control            ,,,,,,,,,,,,
+Machine type,Acquisition Cost,Purchase period,Sale period,Depreciation period,Period Amortization / Leasing,Amortization amount left,Initial Machines,Machines Sent,Machines Received,Machines Available,,
+Total M1,0,,,,0,0,0,0,0,0,,
+Total M2,0,,,,0,0,0,0,0,0,,
+Total M3-alpha,0,,,,0,0,0,0,0,0,,
+Total M3-beta,0,,,,0,0,0,0,0,0,,
+Total M4,0,,,,0,0,0,0,0,0,,
+,,,,,,,,,,,,
+                 Machines Summary            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+M1,,,,,,,,,,,,
+M2,,,,,,,,,,,,
+M3-alpha,,,,,,,,,,,,
+M3-beta,,,,,,,,,,,,
+M4,,,,,,,,,,,,
+,,,,,,,,,,,,
+                 Spaces            ,,,,,,,,,,,,
+ ,P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11,P12
+Occupied,0,0,0,0,0,0,0,0,0,0,0,0
+Available,0,0,0,0,0,0,0,0,0,0,0,0
+Leased,0,0,0,0,0,0,0,0,0,0,0,0
+Total,0,0,0,0,0,0,0,0,0,0,0,0
+,,,,,,,,,,,,
